@@ -627,9 +627,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
           <div class="hd"><h3>Bulk update from Excel</h3><div class="spacer"></div>
             <button class="btn ghost sm" id="btnBulkTemplate">Download template</button></div>
           <div class="bd">
-            <p class="small muted" style="margin-top:0">Two columns: <strong>item code</strong> (or the exact
-              item name) and <strong>quantity</strong>. Select the cells in Excel, copy, and paste below — or
-              pick a CSV file. A header row is fine; it's ignored.</p>
+            <p class="small muted" style="margin-top:0">Paste from the downloaded template as-is — <strong>code</strong>,
+              name and <strong>quantity</strong> — or just two columns, code and quantity. The quantity is taken
+              from the last number on each line. Header rows are ignored. A CSV file works too.</p>
             <div class="formrow f2" style="margin-bottom:8px">
               <div style="grid-column:span 2">
                 <label class="f" for="bkPaste">Paste from Excel</label>
@@ -1051,16 +1051,35 @@ function jsonp(params){
   });
 }
 
-function post(payload){
+function post(payload, tries){
   if(!SCRIPT_URL) return Promise.reject(new Error('config.js is missing or SCRIPT_URL is empty.'));
   payload.token = API_TOKEN;
   if(SESSION && SESSION.token) payload.session = SESSION.token;
+  tries = (tries===undefined) ? 2 : tries;   // retry once on a cold-start timeout
+
+  var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = setTimeout(function(){ if(ctrl) ctrl.abort(); }, 55000);  // Apps Script can be slow when cold
+
   return fetch(SCRIPT_URL, {
     method:'POST', redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},  // text/plain avoids a CORS preflight
-    body: JSON.stringify(payload)
-  }).then(function(r){ return r.json(); })
+    body: JSON.stringify(payload),
+    signal: ctrl ? ctrl.signal : undefined
+  }).then(function(r){
+    clearTimeout(timer);
+    return r.text().then(function(t){
+      try { return JSON.parse(t); }
+      catch(e){ throw new Error('The server is waking up — give it a moment and try again.'); }
+    });
+  }).catch(function(err){
+    clearTimeout(timer);
+    if(tries > 0 && (err.name === 'AbortError' || /Failed to fetch|waking up/i.test(err.message))){
+      return new Promise(function(res){ setTimeout(res, 800); }).then(function(){ return post(payload, tries-1); });
+    }
+    throw err;
+  }).then(function(r){ return r; }).then(function(r){ return r; })
     .then(function(res){
+      if(!res || res.ok === undefined) throw new Error('Unexpected reply from the server. Try again in a moment.');
       if(!res.ok){
         if(/session has ended/i.test(res.error)) signOut(true);
         throw new Error(res.error);
@@ -2088,14 +2107,22 @@ var BULK = [];
 
 function parseBulk(text){
   var out = [];
+  var clean = function(v){ return String(v||'').trim().replace(/^"|"$/g,''); };
+  var isNum = function(v){ return /^-?\d+(\.\d+)?$/.test(v); };
   String(text||'').split(/\r?\n/).forEach(function(line){
     if(!line.trim()) return;
-    var cells = line.indexOf('\t') > -1 ? line.split('\t') : line.split(',');
-    var key = String(cells[0]||'').trim().replace(/^"|"$/g,'');
-    var qty = String(cells[1]||'').trim().replace(/^"|"$/g,'').replace(/,/g,'');
+    var cells = (line.indexOf('\t') > -1 ? line.split('\t') : line.split(',')).map(clean);
+    var key = cells[0];
     if(!key) return;
-    if(!/^-?\d+(\.\d+)?$/.test(qty)) return;      // skips the header row too
-    out.push({ code:key, qty:parseFloat(qty) });
+    // Quantity is the last cell that is a number — so template rows
+    // (code, name, count) and plain two-column rows both work.
+    var qty = null;
+    for(var i = cells.length - 1; i >= 1; i--){
+      var v = cells[i].replace(/,/g,'');
+      if(isNum(v)){ qty = parseFloat(v); break; }
+    }
+    if(qty === null) return;   // header row and rows with no number are skipped
+    out.push({ code:key, qty:qty });
   });
   return out;
 }
@@ -2190,6 +2217,14 @@ if(pd) pd.textContent = 'Printed ' + new Date().toLocaleDateString('en-GB',
 
 renderAll();          // paint the shell from the seed
 showGate('');         // nothing loads until someone signs in
+
+/* Wake the backend in the background while the user is typing, so the
+   first real sign-in doesn't pay the cold-start cost. */
+if(SCRIPT_URL){
+  var img = new Image();
+  fetch(SCRIPT_URL + '?action=warmup&token=' + encodeURIComponent(API_TOKEN) + '&_=' + Date.now(),
+    { method:'GET', mode:'no-cors' }).catch(function(){});
+}
 
 /* Re-read every minute, but never while a form has unposted lines. */
 setInterval(function(){
