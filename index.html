@@ -623,6 +623,29 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
           </div>
         </div>
 
+        <div class="card" style="margin-bottom:14px">
+          <div class="hd"><h3>Bulk update from Excel</h3><div class="spacer"></div>
+            <button class="btn ghost sm" id="btnBulkTemplate">Download template</button></div>
+          <div class="bd">
+            <p class="small muted" style="margin-top:0">Two columns: <strong>item code</strong> (or the exact
+              item name) and <strong>quantity</strong>. Select the cells in Excel, copy, and paste below — or
+              pick a CSV file. A header row is fine; it's ignored.</p>
+            <div class="formrow f2" style="margin-bottom:8px">
+              <div style="grid-column:span 2">
+                <label class="f" for="bkPaste">Paste from Excel</label>
+                <textarea id="bkPaste" rows="7" placeholder="FAC-0002&#9;90&#10;FAC-0007&#9;48&#10;FAC-0026&#9;594" style="font-family:'IBM Plex Mono',monospace; font-size:13px"></textarea>
+              </div>
+              <div><label class="f" for="bkFile">…or choose a CSV file</label>
+                <input id="bkFile" type="file" accept=".csv,.txt,text/csv" style="padding:6px"></div>
+              <div><label class="f" for="bkWhy">Reason</label>
+                <input id="bkWhy" placeholder="e.g. physical count August 2026"></div>
+            </div>
+            <button class="btn ghost" id="btnBulkCheck">Check the list</button>
+            <button class="btn primary hide" id="btnBulkApply">Apply to opening stock</button>
+            <div id="bkPreview" style="margin-top:14px"></div>
+          </div>
+        </div>
+
         <div class="grid g2" style="margin-bottom:14px">
           <div class="card">
             <div class="hd" style="background:var(--gold-soft)"><h3>Close the period</h3></div>
@@ -2057,6 +2080,99 @@ $('#btnClearOpening').addEventListener('click', function(){
       return sync(false);
     }).catch(function(e){ toast('bad', e.message); })
     .then(function(){ $('#btnClearOpening').disabled = false; });
+});
+
+
+/* ── bulk opening update ───────────────────────────────────────────── */
+var BULK = [];
+
+function parseBulk(text){
+  var out = [];
+  String(text||'').split(/\r?\n/).forEach(function(line){
+    if(!line.trim()) return;
+    var cells = line.indexOf('\t') > -1 ? line.split('\t') : line.split(',');
+    var key = String(cells[0]||'').trim().replace(/^"|"$/g,'');
+    var qty = String(cells[1]||'').trim().replace(/^"|"$/g,'').replace(/,/g,'');
+    if(!key) return;
+    if(!/^-?\d+(\.\d+)?$/.test(qty)) return;      // skips the header row too
+    out.push({ code:key, qty:parseFloat(qty) });
+  });
+  return out;
+}
+
+function checkBulk(){
+  var rows = parseBulk($('#bkPaste').value);
+  BULK = [];
+  if(!rows.length){
+    $('#bkPreview').innerHTML = '<div class="note bad">Nothing readable. Each line needs an item code or name, then a number.</div>';
+    $('#btnBulkApply').classList.add('hide');
+    return;
+  }
+  var byCode = {}, byName = {};
+  DB.items.forEach(function(i){ byCode[i.code.toUpperCase()] = i; byName[i.name.toLowerCase()] = i; });
+
+  var good = [], bad = [], seen = {}, changed = 0, net = 0;
+  rows.forEach(function(r, ix){
+    var it = byCode[r.code.toUpperCase()] || byName[r.code.toLowerCase()];
+    if(!it){ bad.push({ ln:ix+1, key:r.code, why:'not on the item master' }); return; }
+    if(seen[it.code]){ bad.push({ ln:ix+1, key:r.code, why:'listed more than once' }); return; }
+    if(r.qty < 0){ bad.push({ ln:ix+1, key:r.code, why:'negative quantity' }); return; }
+    seen[it.code] = 1;
+    if(it.opening !== r.qty){ changed++; net += (r.qty - it.opening); }
+    good.push({ it:it, qty:r.qty });
+  });
+  BULK = bad.length ? [] : good.map(function(g){ return { code:g.it.code, qty:g.qty }; });
+
+  var html = '';
+  if(bad.length){
+    html += '<div class="note bad">'+bad.length+' line'+(bad.length===1?'':'s')+
+      ' could not be matched, so nothing will be applied. Fix these and check again:\n'+
+      bad.slice(0,12).map(function(b){ return 'Line '+b.ln+' — "'+b.key+'" '+b.why; }).join('\n')+
+      (bad.length>12 ? '\n…and '+(bad.length-12)+' more' : '')+'</div>';
+  } else {
+    html += '<div class="note good">'+good.length+' lines matched. '+changed+' would change, net '+
+      (net>=0?'+':'')+n0(net)+' units. Nothing is written until you press Apply.</div>';
+  }
+  html += '<div class="card"><div class="tablewrap" style="max-height:300px"><table>'+
+    '<thead><tr><th>Code</th><th>Item</th><th class="n">Opening now</th><th class="n">New</th><th class="n">Change</th></tr></thead><tbody>'+
+    good.slice(0,300).map(function(g){
+      var d = g.qty - g.it.opening;
+      return '<tr><td class="code">'+esc(g.it.code)+'</td><td>'+esc(g.it.name)+'</td>'+
+        '<td class="n">'+n0(g.it.opening)+'</td><td class="n"><strong>'+n0(g.qty)+'</strong></td>'+
+        '<td class="n" style="color:'+(d>0?'var(--blue-600)':(d<0?'var(--gold)':'#5B7A96'))+'">'+
+        (d===0?'—':(d>0?'+':'')+n0(d))+'</td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+
+  $('#bkPreview').innerHTML = html;
+  $('#btnBulkApply').classList.toggle('hide', !BULK.length);
+}
+
+$('#btnBulkCheck').addEventListener('click', checkBulk);
+$('#bkFile').addEventListener('change', function(){
+  var f = this.files && this.files[0];
+  if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){ $('#bkPaste').value = String(rd.result); checkBulk(); };
+  rd.onerror = function(){ toast('bad','That file could not be read.'); };
+  rd.readAsText(f);
+});
+$('#btnBulkApply').addEventListener('click', function(){
+  if(!BULK.length) return;
+  if(!window.confirm('Apply '+BULK.length+' opening figures?\n\nA backup runs first. Every change is logged against your name.')) return;
+  $('#btnBulkApply').disabled = true;
+  post({ action:'bulkOpening', rows:BULK, reason:$('#bkWhy').value })
+    .then(function(r){
+      toast('good',r.applied+' lines applied, '+r.changed+' changed, net '+(r.net>=0?'+':'')+n0(r.net)+' units.');
+      $('#bkPaste').value=''; $('#bkWhy').value=''; $('#bkPreview').innerHTML='';
+      $('#btnBulkApply').classList.add('hide'); BULK=[];
+      return sync(false);
+    }).catch(function(e){ toast('bad', e.message); })
+    .then(function(){ $('#btnBulkApply').disabled = false; });
+});
+$('#btnBulkTemplate').addEventListener('click', function(){
+  var rows = [['Item code','Item name (for reference)','Opening quantity']];
+  DB.items.forEach(function(i){ rows.push([i.code, i.name, i.opening]); });
+  csv(rows, 'opening-stock-template-'+iso()+'.csv');
 });
 
 /* ══════════════════════════════════════════════════════════════════════
