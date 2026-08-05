@@ -19,7 +19,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Chart.js, with fallbacks in case a CDN is blocked on the office network -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>window.Chart||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>');</script>
+<script>window.Chart||document.write('<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
 
 <style>
 :root{
@@ -1421,22 +1424,34 @@ $('#btnAddItem').addEventListener('click', function(){
    ══════════════════════════════════════════════════════════════════════ */
 var C = { ink:'#14181F', slate:'#3B4757', line:'#D6DBE2', red:'#C8102E', green:'#0F6E64',
           amber:'#A9670C', grey:'#9AA5B4' };
-Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
-Chart.defaults.font.size = 11;
-Chart.defaults.color = '#5A6472';
-Chart.defaults.plugins.legend.labels.boxWidth = 10;
-Chart.defaults.plugins.legend.labels.boxHeight = 10;
+var HAS_CHARTS = (typeof Chart !== 'undefined');
+if(HAS_CHARTS){
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = '#5A6472';
+  Chart.defaults.plugins.legend.labels.boxWidth = 10;
+  Chart.defaults.plugins.legend.labels.boxHeight = 10;
+}
 
 function draw(id, cfg){
+  if(!HAS_CHARTS) return;
   if(CHARTS[id]) CHARTS[id].destroy();
   var el = document.getElementById(id);
   if(!el) return;
-  CHARTS[id] = new Chart(el.getContext('2d'), cfg);
+  try { CHARTS[id] = new Chart(el.getContext('2d'), cfg); } catch(e){}
 }
 var GRID = { grid:{ color:'#EDEFF2', drawTicks:false }, border:{ color:'#D6DBE2' } };
 var NOGRID = { grid:{ display:false }, border:{ color:'#D6DBE2' } };
 
 function drawCharts(){
+  if(!HAS_CHARTS){
+    $$('.chartbox').forEach(function(b){
+      b.innerHTML = '<div class="note warn" style="margin:0">Charts could not load — the chart library is blocked on this network. '+
+        'Every figure and table still works. Ask IT to allow <span class="code">cdn.jsdelivr.net</span> or '+
+        '<span class="code">cdnjs.cloudflare.com</span>.</div>';
+    });
+    return;
+  }
   var months = fiscalMonths();
   var inM = {}, outM = {};
   months.forEach(function(m){ inM[m]=0; outM[m]=0; });
