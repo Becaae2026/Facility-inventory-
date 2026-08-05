@@ -4,25 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Facility Store — Inventory Control</title>
+<link rel="icon" href="BECAAE_LOGO.jpg">
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      PASTE YOUR APPS SCRIPT DETAILS HERE, THEN SAVE.
      SCRIPT_URL must end in /exec. TOKEN must match CFG.TOKEN in Code.gs.
      Leave them blank to run in read-only preview mode.
      ═══════════════════════════════════════════════════════════════════ -->
+<!-- Connection settings live in config.js so they survive any update to this
+     file. Edit config.js once; never edit this block. -->
+<script src="config.js"></script>
 <script>
-  var SCRIPT_URL = "";
-  var API_TOKEN  = "CHANGE-ME-BEC-FACILITY-2026";
-  var SHEET_URL  = "https://docs.google.com/spreadsheets/d/1HhgP1A5qcnc4yD_7ubGpb3gZQlqIE9VHBMhfNtLlVE8/edit";
+  if(typeof SCRIPT_URL === 'undefined') var SCRIPT_URL = "";
+  if(typeof API_TOKEN  === 'undefined') var API_TOKEN  = "";
+  if(typeof SHEET_URL  === 'undefined') var SHEET_URL  =
+    "https://docs.google.com/spreadsheets/d/1HhgP1A5qcnc4yD_7ubGpb3gZQlqIE9VHBMhfNtLlVE8/edit";
+
+  /* Logo: try the file sitting next to this page first, then GitHub raw,
+     then fall back to a plain BEC wordmark so the header never breaks. */
+  var LOGO_RAW = "https://raw.githubusercontent.com/Becaae2026/Facility-inventory-/main/BECAAE_LOGO.jpg";
+  function logoErr(img){
+    if(!img.getAttribute('data-retried')){
+      img.setAttribute('data-retried','1');
+      img.src = LOGO_RAW;
+      return;
+    }
+    if(img.className === 'logo'){
+      var span = document.createElement('span');
+      span.className = 'mark';
+      span.textContent = 'BEC';
+      img.replaceWith(span);
+    } else {
+      img.style.display = 'none';
+    }
+  }
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- Chart.js, with fallbacks in case a CDN is blocked on the office network -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Chart.js 4.4.1. Served from this repo first, so nothing depends on an
+     outside CDN. The two CDN lines are only a fallback for opening the file
+     on its own, away from the repo. -->
+<script src="chart.umd.js"></script>
+<script>window.Chart||document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
 <script>window.Chart||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>');</script>
-<script>window.Chart||document.write('<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
 
 <style>
 :root{
@@ -67,6 +93,11 @@ a{color:var(--blue-600)}
 .hdr{background:var(--navy-900); color:#DCE8F4; position:sticky; top:0; z-index:40}
 .hdrtop{display:flex; align-items:center; gap:14px; padding:12px 26px; flex-wrap:wrap}
 .brand{display:flex; align-items:baseline; gap:10px}
+.brand .logo{
+  height:38px; width:auto; display:block; background:#fff; padding:4px 8px;
+  border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+.printhead{display:none}
 .brand .mark{
   background:var(--blue-500); color:#06182A; font-family:"Barlow Condensed"; font-weight:700;
   font-size:15px; letter-spacing:.16em; padding:3px 9px; border-radius:3px;
@@ -207,6 +238,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
 
 @media print{
   .hdr,.hero,.noprint{display:none!important}
+  .printhead{
+    display:flex; align-items:center; gap:14px; padding:0 0 12px;
+    border-bottom:2px solid var(--navy-800); margin-bottom:16px;
+  }
+  .printhead img{height:46px; width:auto}
+  .printhead strong{display:block; font-family:"Barlow Condensed"; font-size:20px;
+    text-transform:uppercase; letter-spacing:.03em}
+  .printhead span{font-size:12px; color:#5B7A96}
   body{background:#fff}
   .page{padding:0} .card{border:none; box-shadow:none}
   .card .hd{background:#fff}
@@ -219,7 +258,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
 <header class="hdr">
   <div class="hdrtop">
     <div class="brand">
-      <span class="mark">BEC</span>
+      <img src="BECAAE_LOGO.jpg" alt="BEC AAE" class="logo" onerror="logoErr(this)">
       <span class="bname">Facility Store</span>
       <span class="bsub">Inventory control · Kuwait · FY from 01-Aug-2026</span>
     </div>
@@ -250,6 +289,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
 </div>
 
 <main class="page">
+      <div class="printhead">
+        <img src="BECAAE_LOGO.jpg" alt="BEC AAE" onerror="logoErr(this)">
+        <div>
+          <strong>Facility Department — Inventory</strong>
+          <span id="printdate"></span>
+        </div>
+      </div>
+
 
       <!-- ══════════════ OVERVIEW ══════════════ -->
       <section id="tab-overview">
@@ -929,8 +976,9 @@ function renderAll(){
   var note = $('#offlinenote');
   if(LIVE){ note.innerHTML=''; }
   else if(!SCRIPT_URL){
-    note.innerHTML = '<div class="note info">Preview mode. You are looking at the item master as it stands in the sheet, with no movements loaded. '+
-      'Open <strong>Sync &amp; backup</strong> and paste the Apps Script URL to go live.</div>';
+    note.innerHTML = '<div class="note warn">Not connected. <strong>config.js</strong> is missing or its '+
+      'SCRIPT_URL is empty, so no movements are loaded. Fix config.js in the repo, or paste the URL under '+
+      '<strong>Sync &amp; backup</strong> for this session only.</div>';
   } else {
     note.innerHTML = '<div class="note warn">Not connected to the sheet right now. Figures below are the last good read. Try Refresh.</div>';
   }
@@ -1628,6 +1676,9 @@ $('#rpTo').value = iso();
 $('#cfgUrl').value = SCRIPT_URL;
 $('#cfgToken').value = API_TOKEN;
 $('#sheetlink').href = SHEET_URL;
+var pd = $('#printdate');
+if(pd) pd.textContent = 'Printed ' + new Date().toLocaleDateString('en-GB',
+  {day:'2-digit', month:'short', year:'numeric'});
 
 sync(false);
 
