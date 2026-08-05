@@ -1,1 +1,1629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facility Store — Inventory Control</title>
 
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PASTE YOUR APPS SCRIPT DETAILS HERE, THEN SAVE.
+     SCRIPT_URL must end in /exec. TOKEN must match CFG.TOKEN in Code.gs.
+     Leave them blank to run in read-only preview mode.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+  var SCRIPT_URL = "";
+  var API_TOKEN  = "CHANGE-ME-BEC-FACILITY-2026";
+  var SHEET_URL  = "https://docs.google.com/spreadsheets/d/1HhgP1A5qcnc4yD_7ubGpb3gZQlqIE9VHBMhfNtLlVE8/edit";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+:root{
+  --ink:#14181F;          /* body text, rail */
+  --ink-2:#5A6472;        /* secondary text */
+  --line:#D6DBE2;         /* hairlines */
+  --surface:#EBEEF2;      /* page */
+  --card:#FFFFFF;
+  --red:#C8102E;          /* BEC accent — actions, issues out */
+  --red-soft:#FBE9EC;
+  --green:#0F6E64;        /* stock in */
+  --green-soft:#E4F1EF;
+  --amber:#A9670C;        /* reorder */
+  --amber-soft:#FBF0DE;
+  --slate:#3B4757;
+  --radius:3px;
+  --shadow:0 1px 0 rgba(20,24,31,.05), 0 1px 3px rgba(20,24,31,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--surface); color:var(--ink);
+  font:400 14px/1.5 Inter,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,.eyebrow,.rail a,.tabbtn,th{
+  font-family:"Barlow Condensed",Inter,sans-serif; letter-spacing:.02em;
+}
+.num,.mono,td.n,input.n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+a{color:var(--red)}
+:focus-visible{outline:2px solid var(--red); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ── shell ─────────────────────────────────────────────────────────── */
+.shell{display:flex; min-height:100vh}
+.rail{
+  width:210px; flex:0 0 210px; background:var(--ink); color:#C7CEDA;
+  padding:18px 0 24px; position:sticky; top:0; height:100vh; overflow:auto;
+}
+.brand{padding:0 18px 18px; border-bottom:1px solid rgba(255,255,255,.09)}
+.brand .mark{
+  display:inline-block; background:var(--red); color:#fff; font-family:"Barlow Condensed";
+  font-weight:700; font-size:15px; letter-spacing:.14em; padding:3px 8px; border-radius:2px;
+}
+.brand .who{margin-top:9px; font-size:19px; font-weight:600; color:#fff;
+  font-family:"Barlow Condensed"; text-transform:uppercase; letter-spacing:.05em; line-height:1.15}
+.brand .sub{font-size:11px; color:#8792A4; margin-top:2px}
+.rail nav{padding:12px 10px}
+.rail a{
+  display:flex; align-items:center; gap:10px; padding:8px 10px; margin:1px 0;
+  color:#C7CEDA; text-decoration:none; font-size:15px; text-transform:uppercase;
+  font-weight:500; border-radius:var(--radius); cursor:pointer;
+}
+.rail a:hover{background:rgba(255,255,255,.06); color:#fff}
+.rail a.on{background:var(--red); color:#fff}
+.rail a .k{font-family:"IBM Plex Mono"; font-size:10px; opacity:.55; width:14px}
+.railfoot{padding:14px 18px; font-size:11px; color:#7C8798; border-top:1px solid rgba(255,255,255,.09); margin-top:10px}
+
+.main{flex:1; min-width:0; display:flex; flex-direction:column}
+.topbar{
+  background:var(--card); border-bottom:1px solid var(--line);
+  padding:12px 22px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  position:sticky; top:0; z-index:20;
+}
+.topbar h1{margin:0; font-size:22px; font-weight:600; text-transform:uppercase}
+.topbar .spacer{flex:1}
+.pill{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 9px;
+  border:1px solid var(--line); border-radius:20px; background:#fff; color:var(--ink-2);
+}
+.pill .dot{width:7px; height:7px; border-radius:50%; background:var(--ink-2)}
+.pill.live .dot{background:var(--green)} .pill.live{color:var(--green); border-color:#BEDFD9}
+.pill.off .dot{background:var(--amber)} .pill.off{color:var(--amber); border-color:#EBD6AE}
+.pill.err .dot{background:var(--red)} .pill.err{color:var(--red); border-color:#EFC3CB}
+.page{padding:22px; max-width:1500px; width:100%}
+.hide{display:none !important}
+
+/* ── cards, type ───────────────────────────────────────────────────── */
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
+.card .hd{padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px}
+.card .hd h3{margin:0; font-size:16px; font-weight:600; text-transform:uppercase}
+.card .hd .spacer{flex:1}
+.card .bd{padding:16px}
+.eyebrow{font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--ink-2); font-weight:600}
+.muted{color:var(--ink-2)}
+.small{font-size:12px}
+
+/* ── KPI strip ─────────────────────────────────────────────────────── */
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; margin-bottom:18px}
+.kpi{background:var(--card); padding:13px 14px}
+.kpi .lab{font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-2); font-weight:600}
+.kpi .val{font-family:"IBM Plex Mono"; font-size:25px; font-weight:600; margin-top:5px; line-height:1}
+.kpi .val.red{color:var(--red)} .kpi .val.green{color:var(--green)} .kpi .val.amber{color:var(--amber)}
+.kpi .foot{font-size:11px; color:var(--ink-2); margin-top:4px}
+
+/* ── grid ──────────────────────────────────────────────────────────── */
+.grid{display:grid; gap:16px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:1080px){.g2,.g3{grid-template-columns:1fr}}
+.chartbox{position:relative; height:250px}
+.chartbox.tall{height:320px}
+
+/* ── tables ────────────────────────────────────────────────────────── */
+.tablewrap{overflow:auto; max-height:520px}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{
+  position:sticky; top:0; background:#F5F7F9; text-align:left; font-size:12px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--slate);
+  padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; z-index:2;
+}
+td{padding:7px 10px; border-bottom:1px solid #EEF1F4; vertical-align:middle}
+td.n,th.n{text-align:right; font-family:"IBM Plex Mono"; font-variant-numeric:tabular-nums}
+th.n{text-align:right}
+tbody tr:hover{background:#F7F9FB}
+tr.clickable{cursor:pointer}
+.code{font-family:"IBM Plex Mono"; font-size:12px; color:var(--slate)}
+.tag{display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+  padding:2px 6px; border-radius:2px; font-weight:600}
+.tag.in{background:var(--green-soft); color:var(--green)}
+.tag.out{background:var(--red-soft); color:var(--red)}
+.tag.low{background:var(--amber-soft); color:var(--amber)}
+.tag.nil{background:#EDEFF2; color:var(--ink-2)}
+.tag.void{background:#EDEFF2; color:var(--ink-2); text-decoration:line-through}
+.tag.neg{background:var(--red); color:#fff}
+
+/* ── signature: shelf gauge ────────────────────────────────────────── */
+.gauge{position:relative; height:9px; background:#EDEFF2; border-radius:1px; min-width:90px; overflow:visible}
+.gauge i{position:absolute; left:0; top:0; bottom:0; background:var(--slate); border-radius:1px}
+.gauge.ok i{background:var(--green)}
+.gauge.low i{background:var(--amber)}
+.gauge.nil i{background:transparent; border-left:2px solid var(--line)}
+.gauge.neg i{background:var(--red)}
+.gauge b{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); opacity:.45}
+.gauge s{position:absolute; inset:0; background-image:repeating-linear-gradient(90deg,transparent 0 19px,rgba(20,24,31,.07) 19px 20px)}
+
+/* ── forms ─────────────────────────────────────────────────────────── */
+label.f{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+  font-weight:600; color:var(--ink-2); margin-bottom:4px}
+input,select,textarea{
+  width:100%; padding:8px 9px; border:1px solid var(--line); border-radius:var(--radius);
+  font:400 13.5px Inter,sans-serif; background:#fff; color:var(--ink);
+}
+input.n{text-align:right}
+input:focus,select:focus,textarea:focus{border-color:var(--slate)}
+.formrow{display:grid; gap:12px; margin-bottom:12px}
+.f4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.f3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.f2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:860px){.f4,.f3,.f2{grid-template-columns:1fr}}
+.btn{
+  display:inline-flex; align-items:center; gap:7px; padding:8px 14px; border:1px solid var(--ink);
+  background:var(--ink); color:#fff; border-radius:var(--radius); font:600 13px Inter,sans-serif;
+  cursor:pointer; text-transform:uppercase; letter-spacing:.04em;
+}
+.btn:hover{background:#000}
+.btn.primary{background:var(--red); border-color:var(--red)}
+.btn.primary:hover{background:#A50D26}
+.btn.ghost{background:#fff; color:var(--ink)}
+.btn.ghost:hover{background:#F3F5F8}
+.btn.sm{padding:5px 9px; font-size:11.5px}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+.linkbtn{background:none; border:none; color:var(--red); font:600 12px Inter; cursor:pointer; padding:2px 4px}
+
+/* ── notices ───────────────────────────────────────────────────────── */
+.note{padding:10px 13px; border-radius:var(--radius); font-size:13px; margin-bottom:14px; border:1px solid}
+.note.info{background:#EEF3F8; border-color:#CBDAE8; color:#274A6B}
+.note.good{background:var(--green-soft); border-color:#BEDFD9; color:var(--green)}
+.note.warn{background:var(--amber-soft); border-color:#EBD6AE; color:var(--amber)}
+.note.bad{background:var(--red-soft); border-color:#EFC3CB; color:var(--red); white-space:pre-line}
+.toast{position:fixed; right:20px; bottom:20px; z-index:99; max-width:400px}
+.toast .note{box-shadow:0 6px 24px rgba(20,24,31,.18)}
+
+/* ── drawer ────────────────────────────────────────────────────────── */
+.drawer{position:fixed; inset:0; background:rgba(20,24,31,.42); display:flex; justify-content:flex-end; z-index:60}
+.drawer .panel{width:min(660px,100%); background:var(--card); height:100%; overflow:auto; box-shadow:-8px 0 30px rgba(0,0,0,.2)}
+.drawer .phd{padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:flex-start; gap:12px; position:sticky; top:0; background:var(--card)}
+.drawer .phd h3{margin:0; font-size:19px; text-transform:uppercase}
+
+@media print{
+  .rail,.topbar,.noprint{display:none!important}
+  body{background:#fff}
+  .page{padding:0} .card{border:none; box-shadow:none}
+  .tablewrap{max-height:none; overflow:visible}
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <span class="mark">BEC</span>
+      <div class="who">Facility Store</div>
+      <div class="sub">Inventory control · Kuwait</div>
+    </div>
+    <nav id="nav">
+      <a data-tab="overview" class="on"><span class="k">01</span> Overview</a>
+      <a data-tab="receive"><span class="k">02</span> Receive stock</a>
+      <a data-tab="issue"><span class="k">03</span> Issue stock</a>
+      <a data-tab="stock"><span class="k">04</span> Stock balance</a>
+      <a data-tab="moves"><span class="k">05</span> Movements</a>
+      <a data-tab="reports"><span class="k">06</span> Reports</a>
+      <a data-tab="items"><span class="k">07</span> Item master</a>
+      <a data-tab="setup"><span class="k">08</span> Sync &amp; backup</a>
+    </nav>
+    <div class="railfoot">
+      Fiscal year from 01-Aug-2026<br>
+      <a id="sheetlink" href="#" target="_blank" rel="noopener" style="color:#9AA6B8">Open the Google Sheet</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <h1 id="ttl">Overview</h1>
+      <span class="pill" id="status"><span class="dot"></span><span id="statustxt">Starting up</span></span>
+      <div class="spacer"></div>
+      <span class="small muted" id="asof"></span>
+      <button class="btn ghost sm" id="btnsync">Refresh</button>
+    </div>
+
+    <div class="page">
+
+      <!-- ══════════════ OVERVIEW ══════════════ -->
+      <section id="tab-overview">
+        <div id="offlinenote"></div>
+        <div class="kpis" id="kpis"></div>
+
+        <div class="grid g2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="hd"><h3>Received vs issued by month</h3><div class="spacer"></div><span class="eyebrow">Units · fiscal year</span></div>
+            <div class="bd"><div class="chartbox"><canvas id="chMonth"></canvas></div></div>
+          </div>
+          <div class="card">
+            <div class="hd"><h3>Stock status</h3><div class="spacer"></div><span class="eyebrow">107 lines</span></div>
+            <div class="bd"><div class="chartbox"><canvas id="chStatus"></canvas></div></div>
+          </div>
+        </div>
+
+        <div class="grid g2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="hd"><h3>Branches drawing the most</h3><div class="spacer"></div><span class="eyebrow">Top 10 · units issued</span></div>
+            <div class="bd"><div class="chartbox tall"><canvas id="chBranch"></canvas></div></div>
+          </div>
+          <div class="card">
+            <div class="hd"><h3>Items moving the most</h3><div class="spacer"></div><span class="eyebrow">Top 10 · units issued</span></div>
+            <div class="bd"><div class="chartbox tall"><canvas id="chItems"></canvas></div></div>
+          </div>
+        </div>
+
+        <div class="grid g2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="hd"><h3>Balance held by category</h3><div class="spacer"></div><span class="eyebrow">Units on hand</span></div>
+            <div class="bd"><div class="chartbox"><canvas id="chCat"></canvas></div></div>
+          </div>
+          <div class="card">
+            <div class="hd"><h3>Movement, last 30 days</h3><div class="spacer"></div><span class="eyebrow">Units in / out</span></div>
+            <div class="bd"><div class="chartbox"><canvas id="chTrend"></canvas></div></div>
+          </div>
+        </div>
+
+        <div class="grid g2">
+          <div class="card">
+            <div class="hd"><h3>Needs ordering</h3><div class="spacer"></div>
+              <button class="btn ghost sm" onclick="go('stock')">Open stock</button></div>
+            <div class="tablewrap" style="max-height:300px"><table id="tblAttention"></table></div>
+          </div>
+          <div class="card">
+            <div class="hd"><h3>Latest postings</h3><div class="spacer"></div>
+              <button class="btn ghost sm" onclick="go('moves')">Open movements</button></div>
+            <div class="tablewrap" style="max-height:300px"><table id="tblLatest"></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ RECEIVE ══════════════ -->
+      <section id="tab-receive" class="hide">
+        <div class="card" style="margin-bottom:16px">
+          <div class="hd"><h3>Goods received from vendor</h3><div class="spacer"></div>
+            <span class="eyebrow" id="grnhint">Document number is assigned on posting</span></div>
+          <div class="bd">
+            <div class="formrow f4">
+              <div><label class="f" for="inVendor">Vendor</label>
+                <select id="inVendor"></select></div>
+              <div><label class="f" for="inInvoice">Invoice / delivery note</label>
+                <input id="inInvoice" placeholder="e.g. 44821"></div>
+              <div><label class="f" for="inDate">Date received</label>
+                <input id="inDate" type="date"></div>
+              <div><label class="f" for="inRemarks">Remarks</label>
+                <input id="inRemarks" placeholder="Optional"></div>
+            </div>
+            <hr style="border:none; border-top:1px solid var(--line); margin:4px 0 14px">
+            <div class="formrow f4">
+              <div style="grid-column:span 2"><label class="f" for="inItem">Item</label>
+                <input id="inItem" list="itemlist" placeholder="Type a code or name" autocomplete="off"></div>
+              <div><label class="f" for="inQty">Quantity</label>
+                <input id="inQty" class="n" type="number" min="1" step="1" placeholder="0"></div>
+              <div><label class="f" for="inCost">Unit cost (KWD)</label>
+                <input id="inCost" class="n" type="number" min="0" step="0.001" placeholder="0.000"></div>
+            </div>
+            <button class="btn ghost" id="btnAddIn">Add line</button>
+            <span class="small muted" id="inItemHint" style="margin-left:10px"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd"><h3>Lines on this receipt</h3><div class="spacer"></div>
+            <button class="btn ghost sm" id="btnClearIn">Clear</button>
+            <button class="btn primary" id="btnPostIn">Post receipt</button></div>
+          <div class="tablewrap"><table id="tblCartIn"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ ISSUE ══════════════ -->
+      <section id="tab-issue" class="hide">
+        <div class="card" style="margin-bottom:16px">
+          <div class="hd"><h3>Items issued to a branch or department</h3><div class="spacer"></div>
+            <span class="eyebrow">Stock is checked before anything is written</span></div>
+          <div class="bd">
+            <div class="formrow f4">
+              <div style="grid-column:span 2"><label class="f" for="outBranch">Issued to</label>
+                <select id="outBranch"></select></div>
+              <div><label class="f" for="outBy">Requested by</label>
+                <input id="outBy" placeholder="Staff name"></div>
+              <div><label class="f" for="outDate">Date issued</label>
+                <input id="outDate" type="date"></div>
+            </div>
+            <hr style="border:none; border-top:1px solid var(--line); margin:4px 0 14px">
+            <div class="formrow f4">
+              <div style="grid-column:span 2"><label class="f" for="outItem">Item</label>
+                <input id="outItem" list="itemlist" placeholder="Type a code or name" autocomplete="off"></div>
+              <div><label class="f" for="outQty">Quantity</label>
+                <input id="outQty" class="n" type="number" min="1" step="1" placeholder="0"></div>
+              <div><label class="f" for="outRemarks">Remarks</label>
+                <input id="outRemarks" placeholder="Optional"></div>
+            </div>
+            <button class="btn ghost" id="btnAddOut">Add line</button>
+            <span class="small muted" id="outItemHint" style="margin-left:10px"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd"><h3>Lines on this issue note</h3><div class="spacer"></div>
+            <button class="btn ghost sm" id="btnClearOut">Clear</button>
+            <button class="btn primary" id="btnPostOut">Post issue</button></div>
+          <div class="tablewrap"><table id="tblCartOut"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ STOCK ══════════════ -->
+      <section id="tab-stock" class="hide">
+        <div class="card">
+          <div class="hd">
+            <h3>Stock balance</h3>
+            <div class="spacer"></div>
+            <input id="stkSearch" placeholder="Search code or name" style="width:230px">
+            <select id="stkCat" style="width:180px"></select>
+            <select id="stkStatus" style="width:150px">
+              <option value="">All statuses</option>
+              <option value="in">In stock</option>
+              <option value="low">At or below reorder</option>
+              <option value="nil">Nil stock</option>
+              <option value="neg">Negative</option>
+            </select>
+            <button class="btn ghost sm" id="btnStkCsv">Export CSV</button>
+          </div>
+          <div class="tablewrap" style="max-height:none"><table id="tblStock"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ MOVEMENTS ══════════════ -->
+      <section id="tab-moves" class="hide">
+        <div class="card">
+          <div class="hd">
+            <h3>Movement ledger</h3>
+            <div class="spacer"></div>
+            <select id="mvType" style="width:140px">
+              <option value="">In and out</option>
+              <option value="in">Receipts only</option>
+              <option value="out">Issues only</option>
+            </select>
+            <input id="mvFrom" type="date" style="width:150px">
+            <input id="mvTo" type="date" style="width:150px">
+            <input id="mvSearch" placeholder="Search" style="width:190px">
+            <button class="btn ghost sm" id="btnMvCsv">Export CSV</button>
+          </div>
+          <div class="tablewrap" style="max-height:none"><table id="tblMoves"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ REPORTS ══════════════ -->
+      <section id="tab-reports" class="hide">
+        <div class="card noprint" style="margin-bottom:16px">
+          <div class="bd">
+            <div class="formrow f4" style="margin-bottom:0">
+              <div><label class="f" for="rpFrom">From</label><input id="rpFrom" type="date"></div>
+              <div><label class="f" for="rpTo">To</label><input id="rpTo" type="date"></div>
+              <div><label class="f" for="rpCat">Category</label><select id="rpCat"></select></div>
+              <div><label class="f" for="rpBranch">Branch or department</label><select id="rpBranch"></select></div>
+            </div>
+            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
+              <button class="btn" id="btnRpRun">Run report</button>
+              <button class="btn ghost" id="btnRpCsv">Export CSV</button>
+              <button class="btn ghost" onclick="window.print()">Print</button>
+              <button class="btn ghost" id="btnRpYtd">Reset to year to date</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="hd"><h3 id="rpTitle">Item movement report</h3><div class="spacer"></div>
+            <span class="eyebrow" id="rpRange"></span></div>
+          <div class="tablewrap" style="max-height:none"><table id="tblReport"></table></div>
+        </div>
+
+        <div class="card">
+          <div class="hd"><h3>Consumption by branch and department</h3><div class="spacer"></div>
+            <span class="eyebrow">Units issued in the selected period</span></div>
+          <div class="tablewrap" style="max-height:420px"><table id="tblBranchRep"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ ITEM MASTER ══════════════ -->
+      <section id="tab-items" class="hide">
+        <div class="card" style="margin-bottom:16px">
+          <div class="hd"><h3>Add an item to the master</h3><div class="spacer"></div>
+            <span class="eyebrow">Code is assigned automatically</span></div>
+          <div class="bd">
+            <div class="formrow f4">
+              <div style="grid-column:span 2"><label class="f" for="itName">Item name</label><input id="itName" placeholder="e.g. A4 PAPER 80GSM"></div>
+              <div><label class="f" for="itCat">Category</label><select id="itCat"></select></div>
+              <div><label class="f" for="itUnit">Unit</label><select id="itUnit"></select></div>
+            </div>
+            <div class="formrow f4">
+              <div><label class="f" for="itOpen">Opening quantity</label><input id="itOpen" class="n" type="number" min="0" step="1" value="0"></div>
+              <div><label class="f" for="itReorder">Reorder level</label><input id="itReorder" class="n" type="number" min="0" step="1" value="0"></div>
+              <div><label class="f" for="itCost">Standard cost (KWD)</label><input id="itCost" class="n" type="number" min="0" step="0.001" value="0"></div>
+              <div><label class="f" for="itLoc">Store location</label><input id="itLoc" placeholder="Rack / shelf"></div>
+            </div>
+            <button class="btn primary" id="btnAddItem">Add item</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hd"><h3>Item master</h3><div class="spacer"></div>
+            <input id="imSearch" placeholder="Search" style="width:220px"></div>
+          <div class="tablewrap" style="max-height:none"><table id="tblItems"></table></div>
+        </div>
+      </section>
+
+      <!-- ══════════════ SETUP ══════════════ -->
+      <section id="tab-setup" class="hide">
+        <div class="grid g2">
+          <div class="card">
+            <div class="hd"><h3>Connection to the Google Sheet</h3></div>
+            <div class="bd">
+              <p class="small muted" style="margin-top:0">The dashboard talks to the sheet through the Apps Script web app. Paste the deployment URL and the token you set in <span class="code">Code.gs</span>. To make it permanent, put the same values at the top of this file.</p>
+              <div class="formrow f2">
+                <div style="grid-column:span 2"><label class="f" for="cfgUrl">Web app URL</label>
+                  <input id="cfgUrl" placeholder="https://script.google.com/macros/s/…/exec"></div>
+                <div style="grid-column:span 2"><label class="f" for="cfgToken">Access token</label>
+                  <input id="cfgToken"></div>
+              </div>
+              <button class="btn primary" id="btnConnect">Connect</button>
+              <button class="btn ghost" id="btnPing">Test connection</button>
+              <div id="connMsg" style="margin-top:12px"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><h3>Backup and retention</h3></div>
+            <div class="bd">
+              <table style="font-size:13px">
+                <tr><td><strong>Audit log</strong><div class="small muted">Every posting and void, inside the sheet</div></td><td class="n">Permanent</td></tr>
+                <tr><td><strong>Daily CSV snapshot</strong><div class="small muted">Every tab, nightly at 01:00 Kuwait time</div></td><td class="n">95 days</td></tr>
+                <tr><td><strong>Month-end workbook copy</strong><div class="small muted">Full spreadsheet, 1st of each month</div></td><td class="n">5½ years</td></tr>
+                <tr><td><strong>Month-end CSV set</strong><div class="small muted">Readable without Google Sheets</div></td><td class="n">5½ years</td></tr>
+              </table>
+              <p class="small muted">Everything lands in Google Drive under <span class="code">Facility Inventory Backups</span>. Rows are never deleted from the sheet — a cancelled line is marked VOID and stays visible.</p>
+              <button class="btn" id="btnBackup">Run a backup now</button>
+              <div id="bkMsg" style="margin-top:12px"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="hd"><h3>How the two-way sync works</h3></div>
+          <div class="bd small">
+            <p style="margin-top:0"><strong>Dashboard to sheet.</strong> Posting a receipt or an issue appends rows to <em>Stock In</em> or <em>Stock Out</em> straight away, with an auto-numbered document reference. Only the input columns are written, so the calculated columns and any formulas you add keep working.</p>
+            <p><strong>Sheet to dashboard.</strong> The dashboard re-reads the whole sheet every 60 seconds and on every Refresh. Anything typed directly into the sheet — a correction, a new item, a new branch, a new vendor — shows up on the next read. Auto-refresh pauses while you have lines sitting in a receipt or issue form so nothing is lost mid-entry.</p>
+            <p style="margin-bottom:0"><strong>Conflicts.</strong> The sheet is the single source of truth. The dashboard holds no separate database, so the two can never drift apart.</p>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<datalist id="itemlist"></datalist>
+<div id="drawer"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   SEED — the item master, branches and vendors as they stand in the sheet.
+   Used for the offline preview and as a fallback if a read fails.
+   ══════════════════════════════════════════════════════════════════════ */
+var SEED_ITEMS = `FAC-0001|A3 PAPER|Paper & Forms|BOX|0
+FAC-0002|A4 PAPER|Paper & Forms|BOX|90
+FAC-0003|A4 FRAME|Writing & Desk|PCS|4
+FAC-0004|A5 REGISTER BOOK|Paper & Forms|PKT|5
+FAC-0005|A6 REGISTER BOOK|Paper & Forms|PKT|8
+FAC-0006|A5 BROWN ENVELOPE|Paper & Forms|PKT|0
+FAC-0007|AA BATTERY|Electrical|PKT|48
+FAC-0008|AAA BATTERY|Electrical|PKT|35
+FAC-0009|AIR MAIL|Paper & Forms|BOX|2
+FAC-0010|BEC AIRMAIL COVER|Paper & Forms|PCS|0
+FAC-0011|BINDER CLIPS 15MM|Writing & Desk|PCS|6
+FAC-0012|BINDER CLIPS 19MM|Writing & Desk|PKT|2
+FAC-0013|BINDER CLIPS 25MM|Writing & Desk|PCS|7
+FAC-0014|BINDER CLIPS 32MM|Writing & Desk|PCS|12
+FAC-0015|BOX FILE|Writing & Desk|PCS|54
+FAC-0016|FACE MASK|Health & Safety|PCS|6
+FAC-0017|BUNDLE TAG|Vouchers & Records|PCS|152
+FAC-0018|CALCULATOR PAPER ROLL|Paper & Forms|PCS|50
+FAC-0019|CALCULATOR RIBBON|Printing & Toner|PKT|115
+FAC-0020|CALCULATOR SMALL|Cash Handling|PCS|0
+FAC-0021|CASHIER BAG|Cash Handling|BOX|3
+FAC-0022|CASIO CALCULATOR (BIG)|Cash Handling|PCS|5
+FAC-0023|CFL BULB|Electrical|PCS|0
+FAC-0024|COINS BAG|Cash Handling|PCS|0
+FAC-0025|COUNTER PEN|Writing & Desk|PCS|29
+FAC-0026|COMPUTER FORM|Paper & Forms|PCS|594
+FAC-0027|CURRENCY BAG (BIG)|Cash Handling|PCS|6
+FAC-0028|CURRENCY BAG (MEDIUM)|Cash Handling|PCS|11
+FAC-0029|CUTTER KNIFE|Writing & Desk|PCS|12
+FAC-0030|CUSTOMER APPLICATION|Vouchers & Records|PCS|0
+FAC-0031|DESPATCH BOOK A4 -REGISTER BOOK|Paper & Forms|PCS|15
+FAC-0032|DESPATCH BOOK MEDIUM 8X10|Paper & Forms|PKT|8
+FAC-0033|ENVLOPE BROWN BIG A4|Paper & Forms|PCS|59
+FAC-0034|ENVLOPE BROWN A3|Paper & Forms|PCS|303
+FAC-0035|ERASER|Writing & Desk|PCS|5
+FAC-0036|EXTENSION CABLE|Electrical|PCS|2
+FAC-0037|FACE MASK (2)|Health & Safety|PCS|0
+FAC-0038|GLUE LIQUID|Writing & Desk|PKT|0
+FAC-0039|GLUE STICK|Writing & Desk|PCS|5
+FAC-0040|GLUE UHU ADHESIVE|Writing & Desk|PCS|0
+FAC-0041|HIGHLIGHTER|Writing & Desk|PCS|0
+FAC-0042|KEY BAG|Cash Handling|PCS|6
+FAC-0043|LETTER HEAD|Paper & Forms|PKT|0
+FAC-0044|MAGIC TAPE CURRENCY|Cash Handling|PKT|0
+FAC-0045|MASKING TAPE|Writing & Desk|PCS|0
+FAC-0046|MONEY DETECTOR|Cash Handling|PCS|0
+FAC-0047|MULTI PIN|Writing & Desk|PCS|2
+FAC-0048|NOTICE BOARD PIN|Writing & Desk|PCS|0
+FAC-0049|PAPER CLIPS - UPINS|Paper & Forms|PKT|7
+FAC-0050|PAPER PUNCH|Paper & Forms|PCS|6
+FAC-0051|PEN (All Colour)|Writing & Desk|PCS|10
+FAC-0052|FACE MASK (3)|Health & Safety|PCS|0
+FAC-0053|PERMENANT MARKER|Writing & Desk|BOX|0
+FAC-0054|PLASTIC FOLDER|Writing & Desk|PCS|65
+FAC-0055|REGISTER ATTENDENCE|Vouchers & Records|PCS|9
+FAC-0056|REGISTER KEY-A|Vouchers & Records|PCS|24
+FAC-0057|REGISTER KEY-B|Vouchers & Records|PCS|23
+FAC-0058|RUBBER BAND|Writing & Desk|PCS|43
+FAC-0059|SANITIZER 5 LTR|Health & Safety|PCS|0
+FAC-0060|SCALE (RULER)|Writing & Desk|PCS|0
+FAC-0061|SCISSORS|Writing & Desk|PCS|14
+FAC-0062|SCOTCH CELLO TAPE|Writing & Desk|PCS|0
+FAC-0063|SHARPENER|Writing & Desk|PCS|11
+FAC-0064|SPONGE CUP (DAMPER)|Writing & Desk|PCS|12
+FAC-0065|STAMP- A/C PAYEE|Cash Handling|PCS|0
+FAC-0066|STAMP- CANCELLED|Cash Handling|PCS|0
+FAC-0067|STAMP- ORGINAL SIGHTED|Cash Handling|PCS|0
+FAC-0068|STAMP- REPLACED|Cash Handling|PCS|0
+FAC-0069|STAMP -ROUND|Cash Handling|PCS|0
+FAC-0070|STAMP-PAID|Cash Handling|PCS|8
+FAC-0071|STAMP INK|Cash Handling|PCS|15
+FAC-0072|STAMP-K-NET PAID|Cash Handling|PCS|1
+FAC-0073|STAPLER|Writing & Desk|PCS|11
+FAC-0074|STAPLER BIG|Writing & Desk|PCS|0
+FAC-0075|STAPLER PINS|Writing & Desk|PCS|174
+FAC-0076|STAPLER PIN REMOVER|Writing & Desk|PCS|0
+FAC-0077|STICKY NOTES|Paper & Forms|PCS|28
+FAC-0078|TAPE DISPENSER|Writing & Desk|PCS|8
+FAC-0079|TONER CARTRIDGES- 151A|Printing & Toner|PCS|8
+FAC-0080|TONER CARTRIDGES- HP 159A|Printing & Toner|PCS|6
+FAC-0081|TONER CARTRIDGES-05A|Printing & Toner|PCS|0
+FAC-0082|TONER CARTRIDGES-131A Black|Printing & Toner|PCS|0
+FAC-0083|TONER CARTRIDGES-2305|Printing & Toner|PCS|10
+FAC-0084|TONER CARTRIDGES-26A|Printing & Toner|PCS|9
+FAC-0085|TONER CARTRIDGES-49A /53A|Printing & Toner|PCS|0
+FAC-0086|TONER CARTRIDGES-80A|Printing & Toner|PCS|9
+FAC-0087|TONER CARTRIDGES-Ribbon Epson LQ350|Printing & Toner|PCS|39
+FAC-0088|TONER CARTRIDGES-Ribbon Epson LQ590|Printing & Toner|PCS|419
+FAC-0089|TONER CARTRIDGES-TN 2260 Brother Toner|Printing & Toner|PCS|0
+FAC-0090|TONER CARTRIDGES-TN 2280 Brother Toner|Printing & Toner|PKT|3
+FAC-0091|TONER 283|Printing & Toner|PCS|9
+FAC-0092|TONER 17A|Printing & Toner|PCS|1
+FAC-0093|TONER 230A|Printing & Toner|PCS|2
+FAC-0094|T. DRUM 232A|Printing & Toner|PCS|3
+FAC-0095|TREASURY TAG|Vouchers & Records|PCS|18
+FAC-0096|TUBE LIGHT 2FEET|Electrical|PCS|0
+FAC-0097|TUBE STARTER|Electrical|PCS|0
+FAC-0098|UNIBALL PEN|Writing & Desk|PCS|29
+FAC-0099|VINYL GLOVES|Health & Safety|PCS|30
+FAC-0100|FACE MASK (4)|Health & Safety|PCS|0
+FAC-0101|V. CASHIER VOUCHER|Vouchers & Records|PCS|0
+FAC-0102|CASH COLLECTION REPORT|Vouchers & Records|PCS|142
+FAC-0103|V. REPLACEMENT VOUCHER|Vouchers & Records|PCS|148
+FAC-0104|WHITE BOARD MARKER|Writing & Desk|PCS|11
+FAC-0105|WHITENER|Writing & Desk|PCS|10
+FAC-0106|WRITING PAD A4|Paper & Forms|PCS|11
+FAC-0107|WRITING PAD A5|Paper & Forms|PCS|140`;
+
+var SEED_BRANCHES = `HDO|MURGHAB HO|Branch
+MHO|MURGAB HO BRANCH|Branch
+AB2|ABBASIYA- 2|Branch
+AB3|ABBASIYA- 3|Branch
+AB4|ABBASIYA- 4|Branch
+ABH|ABUHALIFA|Branch
+AIR|AIRPORT - T4|Branch
+T5A|AIRPORT-T5A|Branch
+AMG|AMGHRA|Branch
+AVE|AVENUES|Branch
+FAH|FAHAHEEL- 1|Branch
+FA2|FAHAHEEL- 2|Branch
+FAS|FAHAHEEL- 3 SOUK|Branch
+FAG|FAHAHEEL- 4 Grand Hyper|Branch
+FAR|FARWANIYA- 1|Branch
+MET|FARWANIYA- 2 METRO|Branch
+FA3|FARWANIYA- 3|Branch
+FR4|FARWANIYA- 4|Branch
+FR5|FARWANIYA- 5|Branch
+FR6|FARWANIYA- 6|Branch
+FR7|FARWANIYA -7|Branch
+FIN|FINTAS|Branch
+HAS|HASAWI- 1|Branch
+HS2|HASAWI- 2|Branch
+HS3|HASAWI- 3 GRAND HYPER|Branch
+IBK|IBK HAWALLY|Branch
+JA2|JAHRA-2|Branch
+JA3|JAHRA-3|Branch
+KAH|KHAITAN- 1|Branch
+KH2|KHAITAN- 2|Branch
+KH3|KHAITAN- 3|Branch
+KH4|KHAITAN- 4|Branch
+MBL|MAHBOULA-1|Branch
+MB2|MAHBOULA-2|Branch
+MB3|MAHBOULA-3|Branch
+MB4|MAHBOULA-4|Branch
+MB5|MAHBOULA-5|Branch
+MB6|MAHBOULA-6|Branch
+MB7|MAHBOULA-7|Branch
+MB8|MAHBOULA-8|Branch
+MGF|MANGAF|Branch
+MG2|Mangaf-2|Branch
+MG3|Mangaf-3|Branch
+MUB|MUBARAKIYA|Branch
+MRB|MURGAB ROUND ABOUT|Branch
+MUT|MUTHAHIDA|Branch
+RIG|RIGGAE|Branch
+SAL|SALMIYA- 1|Branch
+SA4|Salmiya-4|Branch
+SA5|Salmiya-5|Branch
+SA6|Salmiya-6|Branch
+SD1|SHAHDADIYA-1|Branch
+SWK|SHUWAIKH|Branch
+WAT|WATIYA|Branch
+|FINANCE Department|Department
+|OPERATIONS Department|Department
+|AUDIT Department|Department
+|WHOLESALE Department|Department
+|CUSTOMER SERVICE Department|Department
+|CORPORATE Department|Department
+|CORPORATE SERVICE Department|Department
+|COMPLIANCE Department|Department
+|PAYMENTS Department|Department
+|CEO OFFICE Department|Department
+|DIGITAL/ONLINE Department|Department
+|FACILITIES Department|Department
+|IT Department|Department
+|TREASURY Department|Department`;
+
+var SEED_VENDORS = `PLATINUM PRINTING PRESS|PRINT & STATIONARY
+AL NAJI INFOTECH CO WLL|PRINTER RIBBON
+ARWA GULF GEN. TRAD & CONT CO.|DRINKING WATER
+PRINTECH UNITED GEN. TRAD CO.|TONER
+BEST LINK GEN TRADING CO.|PRINT & STATIONARY
+MAHDI HABIB COMMERCIAL EST|FURNITURE
+PRINT SHOP|PRINT & STATIONARY
+AL MULLA INTL GEN TRDG FURN & EQUIP COMPANY|COUNTING MACHINE
+AL NAHAR INTERNATIONAL CO.|COUNTING MACHINE`;
+
+/* ══════════════════════════════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════════════════════════════ */
+var FY_START = new Date(2026, 7, 1);            // 01-Aug-2026
+var DB = { items:[], stockIn:[], stockOut:[], branches:[], vendors:[], lists:{} };
+var CART_IN = [], CART_OUT = [];
+var TAB = 'overview';
+var LIVE = false;
+var CHARTS = {};
+var BUSY = false;
+
+function $(s, r){ return (r||document).querySelector(s); }
+function $$(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function n0(v){ var x = Number(v)||0; return x.toLocaleString('en-US'); }
+function n3(v){ return (Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:3, maximumFractionDigits:3}); }
+function iso(d){ var x = d||new Date();
+  return x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)+'-'+('0'+x.getDate()).slice(-2); }
+function parseDate(s){
+  if(!s) return null;
+  if(s instanceof Date) return s;
+  s = String(s).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function monthKey(d){ return d ? d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2) : ''; }
+function monthLabel(k){
+  var p = k.split('-'), names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return names[+p[1]-1]+'-'+p[0].slice(2);
+}
+function fiscalMonths(){
+  var out=[], d=new Date(FY_START);
+  for(var i=0;i<12;i++){ out.push(monthKey(d)); d.setMonth(d.getMonth()+1); }
+  return out;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SEED LOAD
+   ══════════════════════════════════════════════════════════════════════ */
+function loadSeed(){
+  DB.items = SEED_ITEMS.split('\n').map(function(l){
+    var p = l.split('|');
+    return { code:p[0], name:p[1], category:p[2], unit:p[3], opening:+p[4]||0,
+             reorder:0, cost:0, location:'' };
+  });
+  DB.branches = SEED_BRANCHES.split('\n').map(function(l){
+    var p = l.split('|'); return { code:p[0], name:p[1], type:p[2] };
+  });
+  DB.vendors = SEED_VENDORS.split('\n').map(function(l){
+    var p = l.split('|'); return { name:p[0], notes:p[1] };
+  });
+  DB.lists = {
+    categories:['Cash Handling','Electrical','Health & Safety','Paper & Forms',
+                'Printing & Toner','Vouchers & Records','Writing & Desk'],
+    units:['PCS','BOX','PKT','ROLL','LTR'],
+    statuses:['ACTIVE','VOID']
+  };
+  DB.stockIn = []; DB.stockOut = [];
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DERIVED FIGURES
+   ══════════════════════════════════════════════════════════════════════ */
+function activeIn(){ return DB.stockIn.filter(function(r){ return (r.status||'ACTIVE')!=='VOID'; }); }
+function activeOut(){ return DB.stockOut.filter(function(r){ return (r.status||'ACTIVE')!=='VOID'; }); }
+
+function balances(){
+  var b = {};
+  DB.items.forEach(function(i){ b[i.code] = { opening:i.opening, inQ:0, outQ:0 }; });
+  activeIn().forEach(function(r){ if(b[r.code]) b[r.code].inQ += (+r.qty||0); });
+  activeOut().forEach(function(r){ if(b[r.code]) b[r.code].outQ += (+r.qty||0); });
+  Object.keys(b).forEach(function(k){ b[k].closing = b[k].opening + b[k].inQ - b[k].outQ; });
+  return b;
+}
+function onHand(code){ var b = balances()[code]; return b ? b.closing : 0; }
+
+function statusOf(item, closing){
+  if(closing < 0) return 'neg';
+  if(closing === 0) return 'nil';
+  if(item.reorder > 0 && closing <= item.reorder) return 'low';
+  return 'in';
+}
+var STATUS_LABEL = { in:'In stock', low:'At reorder', nil:'Nil stock', neg:'Negative' };
+
+function itemBy(code){
+  for(var i=0;i<DB.items.length;i++) if(DB.items[i].code===code) return DB.items[i];
+  return null;
+}
+function resolveItem(text){
+  if(!text) return null;
+  text = String(text).trim();
+  var code = text.split(' — ')[0].trim();
+  var hit = itemBy(code);
+  if(hit) return hit;
+  var low = text.toLowerCase();
+  for(var i=0;i<DB.items.length;i++){
+    if(DB.items[i].name.toLowerCase() === low) return DB.items[i];
+  }
+  return null;
+}
+function branchLabel(rec){ return rec.branch ? (rec.branch + ' · ' + (rec.issuedTo||'')) : (rec.issuedTo||'—'); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   TRANSPORT
+   ══════════════════════════════════════════════════════════════════════ */
+function jsonp(params){
+  return new Promise(function(resolve, reject){
+    if(!SCRIPT_URL) return reject(new Error('No web app URL set.'));
+    var cb = 'cb_' + Math.random().toString(36).slice(2);
+    var timer = setTimeout(function(){ cleanup(); reject(new Error('The sheet did not answer in time.')); }, 30000);
+    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = function(res){ cleanup(); res && res.ok ? resolve(res.data) : reject(new Error(res && res.error || 'Read failed.')); };
+    var q = Object.keys(params).map(function(k){ return k+'='+encodeURIComponent(params[k]); }).join('&');
+    var s = document.createElement('script');
+    s.src = SCRIPT_URL + '?' + q + '&callback=' + cb + '&token=' + encodeURIComponent(API_TOKEN) + '&_=' + Date.now();
+    s.onerror = function(){ cleanup(); reject(new Error('Could not reach the web app. Check the URL and that it is deployed to "Anyone".')); };
+    document.body.appendChild(s);
+  });
+}
+
+function post(payload){
+  if(!SCRIPT_URL) return Promise.reject(new Error('Connect the dashboard to the sheet first (Sync & backup).'));
+  payload.token = API_TOKEN;
+  return fetch(SCRIPT_URL, {
+    method:'POST', redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},  // text/plain avoids a CORS preflight
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.json(); })
+    .then(function(res){ if(!res.ok) throw new Error(res.error); return res.data; });
+}
+
+function setStatus(kind, text){
+  var el = $('#status');
+  el.className = 'pill' + (kind ? ' '+kind : '');
+  $('#statustxt').textContent = text;
+}
+
+function sync(quiet){
+  if(!SCRIPT_URL){
+    LIVE = false;
+    setStatus('off','Preview — not connected');
+    renderAll();
+    return Promise.resolve();
+  }
+  if(!quiet) setStatus('', 'Reading the sheet…');
+  return jsonp({ action:'bootstrap' }).then(function(data){
+    if(data.items && data.items.length) DB.items = data.items;
+    DB.stockIn  = data.stockIn  || [];
+    DB.stockOut = data.stockOut || [];
+    if(data.branches && data.branches.length) DB.branches = data.branches;
+    if(data.vendors && data.vendors.length)  DB.vendors  = data.vendors;
+    if(data.lists && data.lists.categories && data.lists.categories.length) DB.lists = data.lists;
+    if(data.sheetUrl) SHEET_URL = data.sheetUrl;
+    LIVE = true;
+    setStatus('live','Synced ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
+    $('#asof').textContent = 'Sheet read at ' + (data.refreshed||'');
+    renderAll();
+  }).catch(function(err){
+    LIVE = false;
+    setStatus('err','Sync failed');
+    if(!quiet) toast('bad', err.message);
+    renderAll();
+  });
+}
+
+function toast(kind, msg){
+  var t = $('#toast');
+  t.innerHTML = '<div class="note '+kind+'">'+esc(msg)+'</div>';
+  setTimeout(function(){ if(t.firstChild) t.innerHTML=''; }, kind==='bad' ? 12000 : 5000);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   NAVIGATION
+   ══════════════════════════════════════════════════════════════════════ */
+var TITLES = { overview:'Overview', receive:'Receive stock', issue:'Issue stock',
+  stock:'Stock balance', moves:'Movements', reports:'Reports',
+  items:'Item master', setup:'Sync & backup' };
+
+function go(tab){
+  TAB = tab;
+  $$('#nav a').forEach(function(a){ a.classList.toggle('on', a.dataset.tab===tab); });
+  $$('section[id^=tab-]').forEach(function(s){ s.classList.toggle('hide', s.id !== 'tab-'+tab); });
+  $('#ttl').textContent = TITLES[tab];
+  window.scrollTo(0,0);
+  if(tab==='overview') drawCharts();
+}
+$$('#nav a').forEach(function(a){ a.addEventListener('click', function(){ go(a.dataset.tab); }); });
+
+/* ══════════════════════════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════════════════════════ */
+function renderAll(){
+  fillPickers();
+  renderKpis();
+  renderAttention();
+  renderLatest();
+  renderStock();
+  renderMoves();
+  renderItems();
+  renderCart('in');
+  renderCart('out');
+  runReport(true);
+  if(TAB==='overview') drawCharts();
+  $('#sheetlink').href = SHEET_URL;
+  var note = $('#offlinenote');
+  if(LIVE){ note.innerHTML=''; }
+  else if(!SCRIPT_URL){
+    note.innerHTML = '<div class="note info">Preview mode. You are looking at the item master as it stands in the sheet, with no movements loaded. '+
+      'Open <strong>Sync &amp; backup</strong> and paste the Apps Script URL to go live.</div>';
+  } else {
+    note.innerHTML = '<div class="note warn">Not connected to the sheet right now. Figures below are the last good read. Try Refresh.</div>';
+  }
+}
+
+function fillPickers(){
+  var v = $('#inVendor');
+  v.innerHTML = '<option value="">Select a vendor…</option>' + DB.vendors.map(function(x){
+    return '<option value="'+esc(x.name)+'">'+esc(x.name)+(x.notes?' — '+esc(x.notes):'')+'</option>'; }).join('');
+
+  var b = $('#outBranch');
+  var br = DB.branches.filter(function(x){ return (x.type||'Branch')!=='Department'; });
+  var dp = DB.branches.filter(function(x){ return (x.type||'')==='Department'; });
+  b.innerHTML = '<option value="">Select a branch or department…</option>' +
+    '<optgroup label="Branches">' + br.map(function(x){
+      return '<option value="B|'+esc(x.code)+'|'+esc(x.name)+'">'+esc(x.code)+' — '+esc(x.name)+'</option>'; }).join('') + '</optgroup>' +
+    '<optgroup label="Departments">' + dp.map(function(x){
+      return '<option value="D||'+esc(x.name)+'">'+esc(x.name)+'</option>'; }).join('') + '</optgroup>';
+
+  $('#itemlist').innerHTML = DB.items.map(function(i){
+    return '<option value="'+esc(i.code+' — '+i.name)+'">'; }).join('');
+
+  var cats = DB.lists.categories || [];
+  $('#stkCat').innerHTML = '<option value="">All categories</option>' + cats.map(function(c){
+    return '<option>'+esc(c)+'</option>'; }).join('');
+  $('#rpCat').innerHTML = '<option value="">All categories</option>' + cats.map(function(c){
+    return '<option>'+esc(c)+'</option>'; }).join('');
+  $('#itCat').innerHTML = cats.map(function(c){ return '<option>'+esc(c)+'</option>'; }).join('');
+  $('#itUnit').innerHTML = (DB.lists.units||['PCS']).map(function(u){ return '<option>'+esc(u)+'</option>'; }).join('');
+  $('#rpBranch').innerHTML = '<option value="">All branches and departments</option>' +
+    DB.branches.map(function(x){
+      return '<option value="'+esc(x.name)+'">'+esc(x.code? x.code+' — ':'')+esc(x.name)+'</option>'; }).join('');
+}
+
+function renderKpis(){
+  var b = balances(), items = DB.items;
+  var opening=0, inQ=0, outQ=0, closing=0, nil=0, low=0, neg=0, value=0;
+  items.forEach(function(i){
+    var r = b[i.code]; if(!r) return;
+    opening+=r.opening; inQ+=r.inQ; outQ+=r.outQ; closing+=r.closing;
+    value += r.closing * (i.cost||0);
+    var st = statusOf(i, r.closing);
+    if(st==='nil') nil++; else if(st==='low') low++; else if(st==='neg') neg++;
+  });
+  var cards = [
+    ['Items on the master', n0(items.length), '', DB.lists.categories.length+' categories'],
+    ['Opening stock', n0(opening), '', 'as at 01-Aug-2026'],
+    ['Received to date', n0(inQ), 'green', activeIn().length+' receipt lines'],
+    ['Issued to date', n0(outQ), 'red', activeOut().length+' issue lines'],
+    ['Closing balance', n0(closing), '', 'units on hand'],
+    ['Stock value', value ? n3(value)+' KWD' : '—', '', value ? '' : 'add standard costs'],
+    ['At or below reorder', n0(low), low? 'amber':'', low? 'order these':'nothing flagged'],
+    ['Nil stock', n0(nil), nil? 'red':'', nil+' of '+items.length+' lines'],
+    ['Negative lines', n0(neg), neg? 'red':'', neg? 'investigate':'ledger is clean'],
+    ['Branches on the list', n0(DB.branches.filter(function(x){return (x.type||'Branch')!=='Department';}).length), '',
+      DB.branches.filter(function(x){return x.type==='Department';}).length+' departments']
+  ];
+  $('#kpis').innerHTML = cards.map(function(c){
+    return '<div class="kpi"><div class="lab">'+esc(c[0])+'</div>'+
+      '<div class="val '+c[2]+'">'+c[1]+'</div>'+
+      '<div class="foot">'+esc(c[3])+'</div></div>';
+  }).join('');
+}
+
+function gaugeHtml(item, closing){
+  var st = statusOf(item, closing);
+  var ceiling = Math.max(closing, item.reorder*2, item.opening, 1);
+  var pct = Math.max(0, Math.min(100, (closing/ceiling)*100));
+  var mark = item.reorder>0 ? Math.min(100,(item.reorder/ceiling)*100) : -1;
+  return '<div class="gauge '+st+'" title="'+STATUS_LABEL[st]+'"><i style="width:'+pct.toFixed(1)+'%"></i>'+
+    (mark>=0 ? '<b style="left:'+mark.toFixed(1)+'%"></b>' : '') + '<s></s></div>';
+}
+
+function renderAttention(){
+  var b = balances();
+  var rows = DB.items.map(function(i){
+    var r = b[i.code] || {closing:0};
+    return { i:i, c:r.closing, st:statusOf(i, r.closing) };
+  }).filter(function(x){ return x.st!=='in'; })
+    .sort(function(a,z){
+      var order={neg:0,nil:1,low:2};
+      return order[a.st]-order[z.st] || z.i.name.localeCompare(a.i.name);
+    }).slice(0,60);
+
+  $('#tblAttention').innerHTML =
+    '<thead><tr><th>Item</th><th>Category</th><th class="n">On hand</th><th>Status</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function(x){
+      return '<tr class="clickable" onclick="openItem(\''+x.i.code+'\')"><td><span class="code">'+esc(x.i.code)+'</span><br>'+esc(x.i.name)+'</td>'+
+        '<td class="small muted">'+esc(x.i.category)+'</td>'+
+        '<td class="n">'+n0(x.c)+' '+esc(x.i.unit)+'</td>'+
+        '<td><span class="tag '+x.st+'">'+STATUS_LABEL[x.st]+'</span></td></tr>';
+    }).join('') : '<tr><td colspan="4" class="muted">Nothing needs ordering.</td></tr>') + '</tbody>';
+}
+
+function allMoves(){
+  var rows = [];
+  DB.stockIn.forEach(function(r){
+    rows.push({ dir:'in', doc:r.doc, date:r.date, party:r.vendor, ref:r.invoice,
+      code:r.code, name:r.name || (itemBy(r.code)||{}).name || '', qty:+r.qty||0,
+      status:(r.status||'ACTIVE').toUpperCase(), remarks:r.remarks, posted:r.posted });
+  });
+  DB.stockOut.forEach(function(r){
+    rows.push({ dir:'out', doc:r.doc, date:r.date, party:branchLabel(r), ref:r.requestedBy,
+      code:r.code, name:r.name || (itemBy(r.code)||{}).name || '', qty:+r.qty||0,
+      status:(r.status||'ACTIVE').toUpperCase(), remarks:r.remarks, posted:r.posted });
+  });
+  rows.sort(function(a,b){
+    var da=parseDate(a.date), db=parseDate(b.date);
+    return (db?db.getTime():0) - (da?da.getTime():0) || String(b.doc).localeCompare(String(a.doc));
+  });
+  return rows;
+}
+
+function renderLatest(){
+  var rows = allMoves().slice(0,40);
+  $('#tblLatest').innerHTML =
+    '<thead><tr><th>Document</th><th>Item</th><th class="n">Qty</th><th>Party</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function(r){
+      return '<tr><td><span class="tag '+r.dir+'">'+(r.dir==='in'?'IN':'OUT')+'</span> <span class="code">'+esc(r.doc)+'</span>'+
+        '<div class="small muted">'+esc(r.date)+'</div></td>'+
+        '<td>'+esc(r.name)+'<div class="small muted code">'+esc(r.code)+'</div></td>'+
+        '<td class="n">'+(r.status==='VOID'?'<span class="tag void">'+n0(r.qty)+'</span>':n0(r.qty))+'</td>'+
+        '<td class="small">'+esc(r.party||'')+'</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="muted">No postings yet. Receive or issue stock to start the ledger.</td></tr>') + '</tbody>';
+}
+
+/* ── stock table ───────────────────────────────────────────────────── */
+function stockRows(){
+  var b = balances();
+  var q = ($('#stkSearch').value||'').trim().toLowerCase();
+  var cat = $('#stkCat').value, st = $('#stkStatus').value;
+  return DB.items.map(function(i){
+    var r = b[i.code] || {opening:i.opening, inQ:0, outQ:0, closing:i.opening};
+    return { i:i, r:r, st:statusOf(i, r.closing) };
+  }).filter(function(x){
+    if(cat && x.i.category!==cat) return false;
+    if(st && x.st!==st) return false;
+    if(q && (x.i.code+' '+x.i.name+' '+x.i.category).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+}
+function renderStock(){
+  var rows = stockRows();
+  $('#tblStock').innerHTML =
+    '<thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th>'+
+    '<th class="n">Opening</th><th class="n">In</th><th class="n">Out</th><th class="n">On hand</th>'+
+    '<th style="width:150px">Level</th><th>Status</th></tr></thead><tbody>' +
+    rows.map(function(x){
+      return '<tr class="clickable" onclick="openItem(\''+x.i.code+'\')">'+
+        '<td class="code">'+esc(x.i.code)+'</td>'+
+        '<td>'+esc(x.i.name)+'</td>'+
+        '<td class="small muted">'+esc(x.i.category)+'</td>'+
+        '<td class="small">'+esc(x.i.unit)+'</td>'+
+        '<td class="n">'+n0(x.r.opening)+'</td>'+
+        '<td class="n" style="color:var(--green)">'+(x.r.inQ?'+'+n0(x.r.inQ):'—')+'</td>'+
+        '<td class="n" style="color:var(--red)">'+(x.r.outQ?'−'+n0(x.r.outQ):'—')+'</td>'+
+        '<td class="n"><strong>'+n0(x.r.closing)+'</strong></td>'+
+        '<td>'+gaugeHtml(x.i, x.r.closing)+'</td>'+
+        '<td><span class="tag '+x.st+'">'+STATUS_LABEL[x.st]+'</span></td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr><th colspan="4">'+rows.length+' lines shown</th>'+
+    '<th class="n">'+n0(rows.reduce(function(s,x){return s+x.r.opening;},0))+'</th>'+
+    '<th class="n">'+n0(rows.reduce(function(s,x){return s+x.r.inQ;},0))+'</th>'+
+    '<th class="n">'+n0(rows.reduce(function(s,x){return s+x.r.outQ;},0))+'</th>'+
+    '<th class="n">'+n0(rows.reduce(function(s,x){return s+x.r.closing;},0))+'</th><th colspan="2"></th></tr></tfoot>';
+}
+
+/* ── item drawer ───────────────────────────────────────────────────── */
+function openItem(code){
+  var it = itemBy(code); if(!it) return;
+  var moves = [];
+  DB.stockIn.filter(function(r){ return r.code===code; }).forEach(function(r){
+    moves.push({dir:'in', date:r.date, doc:r.doc, party:r.vendor, qty:+r.qty||0, status:(r.status||'ACTIVE').toUpperCase(), remarks:r.remarks}); });
+  DB.stockOut.filter(function(r){ return r.code===code; }).forEach(function(r){
+    moves.push({dir:'out', date:r.date, doc:r.doc, party:branchLabel(r), qty:+r.qty||0, status:(r.status||'ACTIVE').toUpperCase(), remarks:r.remarks}); });
+  moves.sort(function(a,b){ var x=parseDate(a.date), y=parseDate(b.date);
+    return (x?x.getTime():0)-(y?y.getTime():0) || String(a.doc).localeCompare(String(b.doc)); });
+
+  var run = it.opening;
+  var body = moves.map(function(m){
+    var live = m.status!=='VOID';
+    if(live) run += (m.dir==='in' ? m.qty : -m.qty);
+    return '<tr><td class="small">'+esc(m.date)+'</td>'+
+      '<td><span class="tag '+m.dir+'">'+(m.dir==='in'?'IN':'OUT')+'</span> <span class="code">'+esc(m.doc)+'</span></td>'+
+      '<td class="small">'+esc(m.party||'')+'</td>'+
+      '<td class="n">'+(live? (m.dir==='in'?'+':'−')+n0(m.qty) : '<span class="tag void">'+n0(m.qty)+'</span>')+'</td>'+
+      '<td class="n">'+(live? n0(run) : '')+'</td></tr>';
+  }).join('');
+
+  var closing = onHand(code), st = statusOf(it, closing);
+  $('#drawer').innerHTML =
+   '<div class="drawer" onclick="if(event.target===this) closeDrawer()"><div class="panel">'+
+    '<div class="phd"><div><div class="eyebrow">'+esc(it.code)+' · '+esc(it.category)+'</div>'+
+      '<h3>'+esc(it.name)+'</h3></div><div style="flex:1"></div>'+
+      '<button class="btn ghost sm" onclick="closeDrawer()">Close</button></div>'+
+    '<div style="padding:18px">'+
+      '<div class="kpis" style="margin-bottom:16px">'+
+        '<div class="kpi"><div class="lab">Opening</div><div class="val">'+n0(it.opening)+'</div><div class="foot">'+esc(it.unit)+'</div></div>'+
+        '<div class="kpi"><div class="lab">On hand</div><div class="val '+(st==='in'?'green':(st==='low'?'amber':'red'))+'">'+n0(closing)+'</div><div class="foot">'+STATUS_LABEL[st]+'</div></div>'+
+        '<div class="kpi"><div class="lab">Reorder level</div><div class="val">'+(it.reorder? n0(it.reorder):'—')+'</div><div class="foot">'+(it.reorder?'':'not set')+'</div></div>'+
+        '<div class="kpi"><div class="lab">Standard cost</div><div class="val">'+(it.cost? n3(it.cost):'—')+'</div><div class="foot">KWD</div></div>'+
+      '</div>'+
+      '<div class="eyebrow" style="margin-bottom:8px">Running balance</div>'+
+      '<div class="card"><div class="tablewrap" style="max-height:420px"><table>'+
+      '<thead><tr><th>Date</th><th>Document</th><th>Party</th><th class="n">Move</th><th class="n">Balance</th></tr></thead>'+
+      '<tbody><tr><td class="small muted">01-Aug-2026</td><td class="small muted">Opening</td><td></td><td class="n">'+n0(it.opening)+'</td><td class="n">'+n0(it.opening)+'</td></tr>'+
+      (body || '') + '</tbody></table></div></div>'+
+      (it.location ? '<p class="small muted">Stored at '+esc(it.location)+'</p>' : '')+
+    '</div></div></div>';
+}
+function closeDrawer(){ $('#drawer').innerHTML = ''; }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeDrawer(); });
+
+/* ══════════════════════════════════════════════════════════════════════
+   CARTS AND POSTING
+   ══════════════════════════════════════════════════════════════════════ */
+function renderCart(kind){
+  var cart = kind==='in' ? CART_IN : CART_OUT;
+  var el = kind==='in' ? $('#tblCartIn') : $('#tblCartOut');
+  if(!cart.length){
+    el.innerHTML = '<tbody><tr><td class="muted" style="padding:22px">No lines yet. Pick an item above and add it.</td></tr></tbody>';
+    return;
+  }
+  var b = balances();
+  var head = kind==='in'
+    ? '<tr><th>Code</th><th>Item</th><th class="n">Qty</th><th class="n">Unit cost</th><th class="n">Line value</th><th></th></tr>'
+    : '<tr><th>Code</th><th>Item</th><th class="n">Qty</th><th class="n">On hand</th><th class="n">After issue</th><th></th></tr>';
+  var body = cart.map(function(l, ix){
+    var it = itemBy(l.code) || {name:'?', unit:''};
+    if(kind==='in'){
+      return '<tr><td class="code">'+esc(l.code)+'</td><td>'+esc(it.name)+'</td>'+
+        '<td class="n">'+n0(l.qty)+' '+esc(it.unit)+'</td>'+
+        '<td class="n">'+(l.cost? n3(l.cost):'—')+'</td>'+
+        '<td class="n">'+(l.cost? n3(l.qty*l.cost):'—')+'</td>'+
+        '<td style="text-align:right"><button class="linkbtn" onclick="dropLine(\'in\','+ix+')">Remove</button></td></tr>';
+    }
+    var have = (b[l.code]||{closing:0}).closing;
+    var after = have - l.qty;
+    return '<tr><td class="code">'+esc(l.code)+'</td><td>'+esc(it.name)+'</td>'+
+      '<td class="n">'+n0(l.qty)+' '+esc(it.unit)+'</td>'+
+      '<td class="n">'+n0(have)+'</td>'+
+      '<td class="n" style="color:'+(after<0?'var(--red)':'inherit')+'">'+n0(after)+(after<0?' ⚠':'')+'</td>'+
+      '<td style="text-align:right"><button class="linkbtn" onclick="dropLine(\'out\','+ix+')">Remove</button></td></tr>';
+  }).join('');
+  el.innerHTML = '<thead>'+head+'</thead><tbody>'+body+'</tbody>';
+}
+function dropLine(kind, ix){
+  (kind==='in'?CART_IN:CART_OUT).splice(ix,1); renderCart(kind);
+}
+
+$('#btnAddIn').addEventListener('click', function(){
+  var it = resolveItem($('#inItem').value);
+  if(!it) return toast('bad','That item is not on the master. Add it under Item master first.');
+  var q = parseFloat($('#inQty').value);
+  if(!(q>0)) return toast('bad','Enter a quantity greater than zero.');
+  CART_IN.push({ code:it.code, qty:q, cost:parseFloat($('#inCost').value)||0 });
+  $('#inItem').value=''; $('#inQty').value=''; $('#inCost').value=''; $('#inItemHint').textContent='';
+  $('#inItem').focus(); renderCart('in');
+});
+$('#btnAddOut').addEventListener('click', function(){
+  var it = resolveItem($('#outItem').value);
+  if(!it) return toast('bad','That item is not on the master.');
+  var q = parseFloat($('#outQty').value);
+  if(!(q>0)) return toast('bad','Enter a quantity greater than zero.');
+  var have = onHand(it.code);
+  var already = CART_OUT.filter(function(l){return l.code===it.code;}).reduce(function(s,l){return s+l.qty;},0);
+  if(q + already > have) return toast('bad', it.name+': only '+have+' '+it.unit+' on hand'+(already?' and '+already+' already on this note':'')+'.');
+  CART_OUT.push({ code:it.code, qty:q, remarks:$('#outRemarks').value||'' });
+  $('#outItem').value=''; $('#outQty').value=''; $('#outItemHint').textContent='';
+  $('#outItem').focus(); renderCart('out');
+});
+$('#inItem').addEventListener('change', function(){
+  var it = resolveItem(this.value);
+  $('#inItemHint').textContent = it ? (it.name+' · '+it.unit+' · on hand '+n0(onHand(it.code))) : '';
+});
+$('#outItem').addEventListener('change', function(){
+  var it = resolveItem(this.value);
+  $('#outItemHint').textContent = it ? (it.name+' · '+it.unit+' · on hand '+n0(onHand(it.code))) : '';
+});
+$('#btnClearIn').addEventListener('click', function(){ CART_IN=[]; renderCart('in'); });
+$('#btnClearOut').addEventListener('click', function(){ CART_OUT=[]; renderCart('out'); });
+
+$('#btnPostIn').addEventListener('click', function(){
+  if(BUSY) return;
+  if(!CART_IN.length) return toast('bad','Add at least one line first.');
+  if(!$('#inVendor').value) return toast('bad','Pick the vendor this came from.');
+  BUSY = true; this.disabled = true;
+  post({ action:'postIn',
+    header:{ vendor:$('#inVendor').value, invoice:$('#inInvoice').value,
+             date:$('#inDate').value || iso(), remarks:$('#inRemarks').value },
+    lines: CART_IN
+  }).then(function(res){
+    toast('good','Receipt posted as '+res.docNo+' — '+res.lines+' line'+(res.lines>1?'s':'')+' written to the sheet.');
+    CART_IN = []; $('#inInvoice').value=''; $('#inRemarks').value='';
+    renderCart('in'); return sync(true);
+  }).catch(function(e){ toast('bad', e.message); })
+    .then(function(){ BUSY=false; $('#btnPostIn').disabled=false; });
+});
+
+$('#btnPostOut').addEventListener('click', function(){
+  if(BUSY) return;
+  if(!CART_OUT.length) return toast('bad','Add at least one line first.');
+  var sel = $('#outBranch').value;
+  if(!sel) return toast('bad','Pick the branch or department receiving the stock.');
+  var p = sel.split('|');
+  BUSY = true; this.disabled = true;
+  post({ action:'postOut',
+    header:{ branch:p[1]||'', issuedTo:p[2]||'', requestedBy:$('#outBy').value,
+             date:$('#outDate').value || iso() },
+    lines: CART_OUT
+  }).then(function(res){
+    toast('good','Issue posted as '+res.docNo+' — '+res.lines+' line'+(res.lines>1?'s':'')+' written to the sheet.');
+    CART_OUT = []; $('#outBy').value=''; $('#outRemarks').value='';
+    renderCart('out'); return sync(true);
+  }).catch(function(e){ toast('bad', e.message); })
+    .then(function(){ BUSY=false; $('#btnPostOut').disabled=false; });
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOVEMENTS
+   ══════════════════════════════════════════════════════════════════════ */
+function movesFiltered(){
+  var type = $('#mvType').value, q = ($('#mvSearch').value||'').trim().toLowerCase();
+  var from = parseDate($('#mvFrom').value), to = parseDate($('#mvTo').value);
+  return allMoves().filter(function(r){
+    if(type && r.dir!==type) return false;
+    var d = parseDate(r.date);
+    if(from && d && d < from) return false;
+    if(to && d && d > to) return false;
+    if(q && (r.doc+' '+r.code+' '+r.name+' '+(r.party||'')+' '+(r.ref||'')).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+}
+function renderMoves(){
+  var rows = movesFiltered();
+  $('#tblMoves').innerHTML =
+    '<thead><tr><th>Date</th><th>Document</th><th>Direction</th><th>Item</th><th class="n">Qty</th>'+
+    '<th>Vendor / branch</th><th>Reference</th><th>Status</th><th class="noprint"></th></tr></thead><tbody>'+
+    (rows.length ? rows.map(function(r){
+      return '<tr><td class="small">'+esc(r.date)+'</td>'+
+        '<td class="code">'+esc(r.doc)+'</td>'+
+        '<td><span class="tag '+r.dir+'">'+(r.dir==='in'?'Received':'Issued')+'</span></td>'+
+        '<td>'+esc(r.name)+'<div class="small muted code">'+esc(r.code)+'</div></td>'+
+        '<td class="n">'+n0(r.qty)+'</td>'+
+        '<td class="small">'+esc(r.party||'')+'</td>'+
+        '<td class="small muted">'+esc(r.ref||'')+'</td>'+
+        '<td>'+(r.status==='VOID'?'<span class="tag void">Void</span>':'<span class="tag nil">Active</span>')+'</td>'+
+        '<td class="noprint" style="text-align:right">'+(r.status==='VOID'?'':
+          '<button class="linkbtn" onclick="voidLine(\''+r.dir+'\',\''+esc(r.doc)+'\',\''+esc(r.code)+'\')">Void</button>')+'</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="muted">Nothing matches those filters.</td></tr>')+'</tbody>';
+}
+function voidLine(dir, doc, code){
+  var reason = window.prompt('Voiding '+doc+' / '+code+'.\nThe row stays in the sheet and stops counting.\n\nWhy is it being voided?');
+  if(reason===null) return;
+  post({ action:'voidLine', log:dir, docNo:doc, itemCode:code, reason:reason })
+    .then(function(){ toast('good', doc+' / '+code+' marked VOID.'); return sync(true); })
+    .catch(function(e){ toast('bad', e.message); });
+}
+['mvType','mvFrom','mvTo','mvSearch'].forEach(function(id){
+  $('#'+id).addEventListener('input', renderMoves);
+});
+['stkSearch','stkCat','stkStatus'].forEach(function(id){
+  $('#'+id).addEventListener('input', renderStock);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   REPORTS
+   ══════════════════════════════════════════════════════════════════════ */
+var REPORT_ROWS = [];
+function runReport(silent){
+  var from = parseDate($('#rpFrom').value), to = parseDate($('#rpTo').value);
+  var cat = $('#rpCat').value, branch = $('#rpBranch').value;
+  function inRange(r){
+    var d = parseDate(r.date);
+    if(from && d && d < from) return false;
+    if(to && d && d > to) return false;
+    return true;
+  }
+  var ins = activeIn().filter(inRange);
+  var outs = activeOut().filter(inRange).filter(function(r){
+    return !branch || (r.issuedTo===branch) || (r.branch && branchName(r.branch)===branch);
+  });
+
+  var agg = {};
+  DB.items.forEach(function(i){
+    if(cat && i.category!==cat) return;
+    agg[i.code] = { item:i, inQ:0, outQ:0 };
+  });
+  ins.forEach(function(r){ if(agg[r.code]) agg[r.code].inQ += (+r.qty||0); });
+  outs.forEach(function(r){ if(agg[r.code]) agg[r.code].outQ += (+r.qty||0); });
+
+  var b = balances();
+  REPORT_ROWS = Object.keys(agg).map(function(k){
+    var a = agg[k], closing = (b[k]||{closing:0}).closing;
+    return { code:k, name:a.item.name, category:a.item.category, unit:a.item.unit,
+             opening:a.item.opening, inQ:a.inQ, outQ:a.outQ, closing:closing,
+             value: closing*(a.item.cost||0) };
+  }).sort(function(x,y){ return (y.outQ - x.outQ) || x.name.localeCompare(y.name); });
+
+  $('#rpRange').textContent = ($('#rpFrom').value||'start') + '  →  ' + ($('#rpTo').value||'today') +
+    (branch ? '  ·  ' + branch : '') + (cat ? '  ·  ' + cat : '');
+
+  var tot = REPORT_ROWS.reduce(function(s,r){ return {i:s.i+r.inQ, o:s.o+r.outQ, c:s.c+r.closing}; }, {i:0,o:0,c:0});
+  $('#tblReport').innerHTML =
+    '<thead><tr><th>Code</th><th>Item</th><th>Category</th><th class="n">Received</th>'+
+    '<th class="n">Issued</th><th class="n">On hand</th><th>Unit</th></tr></thead><tbody>'+
+    REPORT_ROWS.map(function(r){
+      return '<tr><td class="code">'+esc(r.code)+'</td><td>'+esc(r.name)+'</td>'+
+        '<td class="small muted">'+esc(r.category)+'</td>'+
+        '<td class="n" style="color:var(--green)">'+(r.inQ? n0(r.inQ):'—')+'</td>'+
+        '<td class="n" style="color:var(--red)">'+(r.outQ? n0(r.outQ):'—')+'</td>'+
+        '<td class="n"><strong>'+n0(r.closing)+'</strong></td>'+
+        '<td class="small">'+esc(r.unit)+'</td></tr>';
+    }).join('')+'</tbody>'+
+    '<tfoot><tr><th colspan="3">'+REPORT_ROWS.length+' items</th><th class="n">'+n0(tot.i)+'</th>'+
+    '<th class="n">'+n0(tot.o)+'</th><th class="n">'+n0(tot.c)+'</th><th></th></tr></tfoot>';
+
+  /* branch consumption */
+  var byBranch = {};
+  activeOut().filter(inRange).forEach(function(r){
+    var key = (r.branch ? r.branch+' · ' : '') + (r.issuedTo||'—');
+    if(cat){ var it = itemBy(r.code); if(!it || it.category!==cat) return; }
+    if(!byBranch[key]) byBranch[key] = { qty:0, lines:0, items:{} };
+    byBranch[key].qty += (+r.qty||0);
+    byBranch[key].lines++;
+    byBranch[key].items[r.code] = (byBranch[key].items[r.code]||0) + (+r.qty||0);
+  });
+  var brRows = Object.keys(byBranch).map(function(k){
+    var v = byBranch[k];
+    var top = Object.keys(v.items).sort(function(a,z){ return v.items[z]-v.items[a]; })[0];
+    return { name:k, qty:v.qty, lines:v.lines, top: top ? ((itemBy(top)||{name:top}).name) : '' };
+  }).sort(function(a,z){ return z.qty-a.qty; });
+
+  $('#tblBranchRep').innerHTML =
+    '<thead><tr><th>Branch or department</th><th class="n">Units issued</th><th class="n">Lines</th><th>Most drawn item</th></tr></thead><tbody>'+
+    (brRows.length ? brRows.map(function(r){
+      return '<tr><td>'+esc(r.name)+'</td><td class="n">'+n0(r.qty)+'</td><td class="n">'+n0(r.lines)+'</td>'+
+        '<td class="small muted">'+esc(r.top)+'</td></tr>'; }).join('')
+      : '<tr><td colspan="4" class="muted">No issues in this period.</td></tr>')+'</tbody>';
+
+  if(!silent) toast('good','Report refreshed.');
+}
+function branchName(code){
+  for(var i=0;i<DB.branches.length;i++) if(DB.branches[i].code===code) return DB.branches[i].name;
+  return code;
+}
+$('#btnRpRun').addEventListener('click', function(){ runReport(false); });
+$('#btnRpYtd').addEventListener('click', function(){
+  $('#rpFrom').value = iso(FY_START); $('#rpTo').value = iso();
+  $('#rpCat').value=''; $('#rpBranch').value=''; runReport(false);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   ITEM MASTER
+   ══════════════════════════════════════════════════════════════════════ */
+function renderItems(){
+  var q = ($('#imSearch').value||'').trim().toLowerCase();
+  var rows = DB.items.filter(function(i){
+    return !q || (i.code+' '+i.name+' '+i.category).toLowerCase().indexOf(q)>=0; });
+  $('#tblItems').innerHTML =
+    '<thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="n">Opening</th>'+
+    '<th class="n">Reorder</th><th class="n">Cost</th><th>Location</th></tr></thead><tbody>'+
+    rows.map(function(i){
+      return '<tr class="clickable" onclick="openItem(\''+i.code+'\')"><td class="code">'+esc(i.code)+'</td>'+
+        '<td>'+esc(i.name)+'</td><td class="small muted">'+esc(i.category)+'</td>'+
+        '<td class="small">'+esc(i.unit)+'</td><td class="n">'+n0(i.opening)+'</td>'+
+        '<td class="n">'+(i.reorder? n0(i.reorder):'<span class="muted">not set</span>')+'</td>'+
+        '<td class="n">'+(i.cost? n3(i.cost):'—')+'</td>'+
+        '<td class="small muted">'+esc(i.location||'')+'</td></tr>';
+    }).join('')+'</tbody>';
+}
+$('#imSearch').addEventListener('input', renderItems);
+$('#btnAddItem').addEventListener('click', function(){
+  var name = $('#itName').value.trim();
+  if(!name) return toast('bad','Enter the item name.');
+  post({ action:'addItem', item:{
+    name:name, category:$('#itCat').value, unit:$('#itUnit').value,
+    opening:+$('#itOpen').value||0, reorder:+$('#itReorder').value||0,
+    cost:+$('#itCost').value||0, location:$('#itLoc').value
+  }}).then(function(res){
+    toast('good','Added as '+res.code+'.');
+    $('#itName').value=''; $('#itOpen').value='0'; $('#itReorder').value='0';
+    $('#itCost').value='0'; $('#itLoc').value='';
+    return sync(true);
+  }).catch(function(e){ toast('bad', e.message); });
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   CHARTS
+   ══════════════════════════════════════════════════════════════════════ */
+var C = { ink:'#14181F', slate:'#3B4757', line:'#D6DBE2', red:'#C8102E', green:'#0F6E64',
+          amber:'#A9670C', grey:'#9AA5B4' };
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#5A6472';
+Chart.defaults.plugins.legend.labels.boxWidth = 10;
+Chart.defaults.plugins.legend.labels.boxHeight = 10;
+
+function draw(id, cfg){
+  if(CHARTS[id]) CHARTS[id].destroy();
+  var el = document.getElementById(id);
+  if(!el) return;
+  CHARTS[id] = new Chart(el.getContext('2d'), cfg);
+}
+var GRID = { grid:{ color:'#EDEFF2', drawTicks:false }, border:{ color:'#D6DBE2' } };
+var NOGRID = { grid:{ display:false }, border:{ color:'#D6DBE2' } };
+
+function drawCharts(){
+  var months = fiscalMonths();
+  var inM = {}, outM = {};
+  months.forEach(function(m){ inM[m]=0; outM[m]=0; });
+  activeIn().forEach(function(r){ var k = monthKey(parseDate(r.date)); if(k in inM) inM[k]+= (+r.qty||0); });
+  activeOut().forEach(function(r){ var k = monthKey(parseDate(r.date)); if(k in outM) outM[k]+= (+r.qty||0); });
+
+  draw('chMonth', {
+    type:'bar',
+    data:{ labels:months.map(monthLabel), datasets:[
+      { label:'Received', data:months.map(function(m){return inM[m];}), backgroundColor:C.green, borderRadius:1, maxBarThickness:16 },
+      { label:'Issued',   data:months.map(function(m){return outM[m];}), backgroundColor:C.red,   borderRadius:1, maxBarThickness:16 }
+    ]},
+    options:{ maintainAspectRatio:false, scales:{ x:NOGRID, y:Object.assign({beginAtZero:true}, GRID) },
+      plugins:{ legend:{ position:'bottom' } } }
+  });
+
+  var b = balances(), counts = { in:0, low:0, nil:0, neg:0 };
+  DB.items.forEach(function(i){ counts[statusOf(i,(b[i.code]||{closing:0}).closing)]++; });
+  draw('chStatus', {
+    type:'doughnut',
+    data:{ labels:['In stock','At or below reorder','Nil stock','Negative'],
+      datasets:[{ data:[counts.in,counts.low,counts.nil,counts.neg],
+        backgroundColor:[C.green,C.amber,C.grey,C.red], borderColor:'#fff', borderWidth:2 }] },
+    options:{ maintainAspectRatio:false, cutout:'58%', plugins:{ legend:{ position:'right' } } }
+  });
+
+  var byBranch = {};
+  activeOut().forEach(function(r){
+    var k = r.issuedTo || r.branch || '—';
+    byBranch[k] = (byBranch[k]||0) + (+r.qty||0);
+  });
+  var topB = Object.keys(byBranch).sort(function(a,z){return byBranch[z]-byBranch[a];}).slice(0,10);
+  draw('chBranch', {
+    type:'bar',
+    data:{ labels:topB.length?topB:['No issues yet'],
+      datasets:[{ data:topB.length?topB.map(function(k){return byBranch[k];}):[0],
+        backgroundColor:C.slate, borderRadius:1, maxBarThickness:14 }] },
+    options:{ indexAxis:'y', maintainAspectRatio:false,
+      scales:{ x:Object.assign({beginAtZero:true}, GRID), y:NOGRID },
+      plugins:{ legend:{ display:false } } }
+  });
+
+  var byItem = {};
+  activeOut().forEach(function(r){ byItem[r.code] = (byItem[r.code]||0) + (+r.qty||0); });
+  var topI = Object.keys(byItem).sort(function(a,z){return byItem[z]-byItem[a];}).slice(0,10);
+  draw('chItems', {
+    type:'bar',
+    data:{ labels: topI.length ? topI.map(function(c){ return (itemBy(c)||{name:c}).name.slice(0,28); }) : ['No issues yet'],
+      datasets:[{ data: topI.length ? topI.map(function(c){return byItem[c];}) : [0],
+        backgroundColor:C.red, borderRadius:1, maxBarThickness:14 }] },
+    options:{ indexAxis:'y', maintainAspectRatio:false,
+      scales:{ x:Object.assign({beginAtZero:true}, GRID), y:NOGRID },
+      plugins:{ legend:{ display:false } } }
+  });
+
+  var byCat = {};
+  DB.items.forEach(function(i){
+    byCat[i.category] = (byCat[i.category]||0) + (b[i.code]||{closing:0}).closing;
+  });
+  var cats = Object.keys(byCat).sort(function(a,z){ return byCat[z]-byCat[a]; });
+  draw('chCat', {
+    type:'bar',
+    data:{ labels:cats, datasets:[{ data:cats.map(function(c){return byCat[c];}),
+      backgroundColor:C.ink, borderRadius:1, maxBarThickness:26 }] },
+    options:{ maintainAspectRatio:false,
+      scales:{ x:Object.assign({ticks:{maxRotation:35,minRotation:0}}, NOGRID), y:Object.assign({beginAtZero:true}, GRID) },
+      plugins:{ legend:{ display:false } } }
+  });
+
+  var days = [], dIn = [], dOut = [];
+  for(var k=29;k>=0;k--){
+    var d = new Date(); d.setDate(d.getDate()-k);
+    var key = iso(d);
+    days.push(key.slice(5));
+    dIn.push(activeIn().filter(function(r){ return iso(parseDate(r.date)||new Date(0))===key; })
+      .reduce(function(s,r){ return s+(+r.qty||0); },0));
+    dOut.push(activeOut().filter(function(r){ return iso(parseDate(r.date)||new Date(0))===key; })
+      .reduce(function(s,r){ return s+(+r.qty||0); },0));
+  }
+  draw('chTrend', {
+    type:'line',
+    data:{ labels:days, datasets:[
+      { label:'Received', data:dIn, borderColor:C.green, backgroundColor:'rgba(15,110,100,.09)',
+        fill:true, tension:.25, pointRadius:0, borderWidth:2 },
+      { label:'Issued', data:dOut, borderColor:C.red, backgroundColor:'rgba(200,16,46,.08)',
+        fill:true, tension:.25, pointRadius:0, borderWidth:2 }
+    ]},
+    options:{ maintainAspectRatio:false,
+      scales:{ x:Object.assign({ticks:{maxTicksLimit:10}}, NOGRID), y:Object.assign({beginAtZero:true}, GRID) },
+      plugins:{ legend:{ position:'bottom' } } }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CSV EXPORT
+   ══════════════════════════════════════════════════════════════════════ */
+function csv(rows, filename){
+  var body = rows.map(function(r){
+    return r.map(function(c){
+      var v = String(c==null?'':c);
+      return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+    }).join(',');
+  }).join('\n');
+  var url = URL.createObjectURL(new Blob(['\ufeff'+body], {type:'text/csv;charset=utf-8'}));
+  var a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+$('#btnStkCsv').addEventListener('click', function(){
+  var rows = [['Item code','Item name','Category','Unit','Opening','Received','Issued','On hand','Status']];
+  stockRows().forEach(function(x){
+    rows.push([x.i.code,x.i.name,x.i.category,x.i.unit,x.r.opening,x.r.inQ,x.r.outQ,x.r.closing,STATUS_LABEL[x.st]]);
+  });
+  csv(rows,'stock-balance-'+iso()+'.csv');
+});
+$('#btnMvCsv').addEventListener('click', function(){
+  var rows = [['Date','Document','Direction','Item code','Item name','Quantity','Vendor / branch','Reference','Status','Remarks']];
+  movesFiltered().forEach(function(r){
+    rows.push([r.date,r.doc,r.dir==='in'?'Received':'Issued',r.code,r.name,r.qty,r.party,r.ref,r.status,r.remarks]);
+  });
+  csv(rows,'movements-'+iso()+'.csv');
+});
+$('#btnRpCsv').addEventListener('click', function(){
+  var rows = [['Item code','Item name','Category','Unit','Received','Issued','On hand']];
+  REPORT_ROWS.forEach(function(r){ rows.push([r.code,r.name,r.category,r.unit,r.inQ,r.outQ,r.closing]); });
+  csv(rows,'inventory-report-'+iso()+'.csv');
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   SETUP
+   ══════════════════════════════════════════════════════════════════════ */
+$('#btnConnect').addEventListener('click', function(){
+  var u = $('#cfgUrl').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){
+    $('#connMsg').innerHTML = '<div class="note bad">That does not look like a deployment URL. It should start with https://script.google.com/ and end with /exec.</div>';
+    return;
+  }
+  SCRIPT_URL = u; API_TOKEN = $('#cfgToken').value;
+  $('#connMsg').innerHTML = '<div class="note info">Connecting…</div>';
+  sync(false).then(function(){
+    $('#connMsg').innerHTML = LIVE
+      ? '<div class="note good">Connected. '+DB.items.length+' items, '+DB.stockIn.length+' receipt lines and '+DB.stockOut.length+' issue lines read from the sheet. Paste these values at the top of the file to make the connection permanent.</div>'
+      : '<div class="note bad">Connected to nothing yet. Check the deployment access is set to "Anyone" and that the token matches.</div>';
+  });
+});
+$('#btnPing').addEventListener('click', function(){
+  var u = $('#cfgUrl').value.trim() || SCRIPT_URL;
+  if(!u) return toast('bad','Enter the web app URL first.');
+  var keep = SCRIPT_URL; SCRIPT_URL = u;
+  var keepT = API_TOKEN; API_TOKEN = $('#cfgToken').value || API_TOKEN;
+  jsonp({action:'ping'}).then(function(){
+    $('#connMsg').innerHTML = '<div class="note good">The web app answered. You can connect.</div>';
+  }).catch(function(e){
+    SCRIPT_URL = keep; API_TOKEN = keepT;
+    $('#connMsg').innerHTML = '<div class="note bad">'+esc(e.message)+'</div>';
+  });
+});
+$('#btnBackup').addEventListener('click', function(){
+  $('#bkMsg').innerHTML = '<div class="note info">Writing a snapshot to Drive…</div>';
+  post({action:'backupNow'}).then(function(r){
+    $('#bkMsg').innerHTML = '<div class="note good">Snapshot written for '+esc(r.date)+' — '+r.filesWritten+
+      ' files'+(r.monthEndArchive?', plus a month-end archive copy':'')+'.</div>';
+  }).catch(function(e){ $('#bkMsg').innerHTML = '<div class="note bad">'+esc(e.message)+'</div>'; });
+});
+$('#btnsync').addEventListener('click', function(){ sync(false); });
+
+/* ══════════════════════════════════════════════════════════════════════
+   BOOT
+   ══════════════════════════════════════════════════════════════════════ */
+loadSeed();
+$('#inDate').value = iso();
+$('#outDate').value = iso();
+$('#rpFrom').value = iso(FY_START);
+$('#rpTo').value = iso();
+$('#cfgUrl').value = SCRIPT_URL;
+$('#cfgToken').value = API_TOKEN;
+$('#sheetlink').href = SHEET_URL;
+
+sync(false);
+
+/* Re-read every minute, but never while a form has unposted lines. */
+setInterval(function(){
+  if(!SCRIPT_URL) return;
+  if(CART_IN.length || CART_OUT.length) return;
+  if(TAB==='receive' || TAB==='issue') return;
+  sync(true);
+}, 60000);
+</script>
+</body>
+</html>
