@@ -268,12 +268,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
 .gatecard .gsub{margin:6px 0 22px; font-size:13px; color:#6C88A4; text-align:center}
 .gatecard .gfoot{margin:16px 0 0; font-size:11.5px; color:#7C96AF; text-align:center}
 .gatecard .note{margin:14px 0 0}
-.userchip{
-  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:#DCE8F4;
-  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
-  padding:4px 11px; border-radius:20px;
-}
-.userchip #urole{font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--blue-400)}
 
 /* ── drawer ────────────────────────────────────────────────────────── */
 .drawer{position:fixed; inset:0; background:rgba(8,25,43,.5); display:flex; justify-content:flex-end; z-index:60}
@@ -313,10 +307,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
     <div class="spacer"></div>
     <span class="pill" id="status"><span class="dot"></span><span id="statustxt">Starting up</span></span>
     <span class="small" id="asof"></span>
-    <span class="userchip hide" id="userchip"><span id="uname"></span><span id="urole"></span></span>
-    <button class="btn ghost sm" id="btnpw">Password</button>
     <button class="btn ghost sm" id="btnsync">Refresh</button>
-    <button class="btn ghost sm" id="btnout">Sign out</button>
   </div>
   <nav class="tabs" id="nav">
     <a data-tab="overview" class="on">Overview</a>
@@ -326,7 +317,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
     <a data-tab="moves">Movements</a>
     <a data-tab="reports">Reports</a>
     <a data-tab="items">Item master</a>
-    <a data-tab="admin" id="navadmin" class="hide">Admin</a>
+    <a data-tab="admin" id="navadmin">Admin</a>
   </nav>
 </header>
 
@@ -575,37 +566,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
 
       <!-- ══════════════ ADMIN ══════════════ -->
       <section id="tab-admin" class="hide">
-        <div class="grid g2" style="margin-bottom:14px">
-
-          <div class="card">
-            <div class="hd"><h3>People who can sign in</h3><div class="spacer"></div>
-              <button class="btn ghost sm" id="btnUsersRefresh">Reload</button></div>
-            <div class="tablewrap" style="max-height:330px"><table id="tblUsers"></table></div>
-          </div>
-
-          <div class="card">
-            <div class="hd"><h3>Add someone</h3></div>
-            <div class="bd">
-              <div class="formrow f2">
-                <div><label class="f" for="nuUser">Username</label>
-                  <input id="nuUser" placeholder="e.g. store.ahmed" autocomplete="off"></div>
-                <div><label class="f" for="nuName">Full name</label>
-                  <input id="nuName" placeholder="Ahmed Al-Sayed"></div>
-                <div><label class="f" for="nuRole">Role</label>
-                  <select id="nuRole">
-                    <option value="staff">Staff — can post receipts and issues</option>
-                    <option value="admin">Admin — can also manage users and stock</option>
-                  </select></div>
-                <div><label class="f" for="nuPass">First password</label>
-                  <input id="nuPass" type="password" placeholder="8 characters or more" autocomplete="new-password"></div>
-              </div>
-              <button class="btn primary" id="btnAddUser">Create account</button>
-              <p class="small muted" style="margin-bottom:0">They'll be asked to set their own password when
-                they first sign in. You never see it after that — a forgotten password is reset, not recovered.</p>
-            </div>
-          </div>
-        </div>
-
         <div class="card" style="margin-bottom:14px">
           <div class="hd"><h3>Opening stock</h3><div class="spacer"></div>
             <span class="eyebrow">Every change is logged with your name</span></div>
@@ -696,37 +656,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-500); box-shadow
       </section>
 
 </main>
-
-<div class="gate" id="gate">
-  <form class="gatecard" id="gateform" autocomplete="on">
-    <img src="BECAAE_LOGO.jpg" alt="BEC AAE" onerror="this.style.display='none'">
-    <h2>Facility Store</h2>
-    <p class="gsub">Inventory control · sign in to continue</p>
-    <label class="f" for="liUser">Username</label>
-    <input id="liUser" name="username" autocomplete="username" autofocus>
-    <label class="f" for="liPass" style="margin-top:10px">Password</label>
-    <input id="liPass" name="password" type="password" autocomplete="current-password">
-    <button class="btn primary" id="btnLogin" type="submit" style="width:100%; justify-content:center; margin-top:16px">Sign in</button>
-    <div id="gateMsg"></div>
-    <p class="gfoot">Signing out happens automatically when you close the tab.</p>
-  </form>
-</div>
-
-<div class="gate hide" id="pwgate">
-  <form class="gatecard" id="pwform" autocomplete="on">
-    <h2 id="pwTitle">Set your password</h2>
-    <p class="gsub" id="pwSub">Choose something only you know — 8 characters or more.</p>
-    <label class="f" for="pwOld">Current password</label>
-    <input id="pwOld" type="password" autocomplete="current-password">
-    <label class="f" for="pwNew" style="margin-top:10px">New password</label>
-    <input id="pwNew" type="password" autocomplete="new-password">
-    <label class="f" for="pwNew2" style="margin-top:10px">New password again</label>
-    <input id="pwNew2" type="password" autocomplete="new-password">
-    <button class="btn primary" id="btnPwSave" type="submit" style="width:100%; justify-content:center; margin-top:16px">Save password</button>
-    <button class="btn ghost" id="btnPwCancel" type="button" style="width:100%; justify-content:center; margin-top:8px">Cancel</button>
-    <div id="pwMsg"></div>
-  </form>
-</div>
 
 <datalist id="itemlist"></datalist>
 <div id="drawer"></div>
@@ -936,6 +865,7 @@ var SESSION = null;   // {token, user:{username,name,role}} — memory only, nev
 var USERS = [];
 var CHARTS = {};
 var BUSY = false;
+var SYNC_FAILS = 0;
 
 function $(s, r){ return (r||document).querySelector(s); }
 function $$(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
@@ -1036,18 +966,28 @@ function branchLabel(rec){ return rec.branch ? (rec.branch + ' · ' + (rec.issue
 /* ══════════════════════════════════════════════════════════════════════
    TRANSPORT
    ══════════════════════════════════════════════════════════════════════ */
-function jsonp(params){
+function jsonpOnce(params){
   return new Promise(function(resolve, reject){
     if(!SCRIPT_URL) return reject(new Error('No web app URL set.'));
     var cb = 'cb_' + Math.random().toString(36).slice(2);
-    var timer = setTimeout(function(){ cleanup(); reject(new Error('The sheet did not answer in time.')); }, 30000);
+    var timer = setTimeout(function(){ cleanup(); reject(new Error('timeout')); }, 30000);
     function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
     window[cb] = function(res){ cleanup(); res && res.ok ? resolve(res.data) : reject(new Error(res && res.error || 'Read failed.')); };
     var q = Object.keys(params).map(function(k){ return k+'='+encodeURIComponent(params[k]); }).join('&');
     var s = document.createElement('script');
     s.src = SCRIPT_URL + '?' + q + '&callback=' + cb + '&token=' + encodeURIComponent(API_TOKEN) + '&_=' + Date.now();
-    s.onerror = function(){ cleanup(); reject(new Error('Could not reach the web app. Check the URL and that it is deployed to "Anyone".')); };
+    s.onerror = function(){ cleanup(); reject(new Error('reset')); };
     document.body.appendChild(s);
+  });
+}
+
+/* The office proxy intermittently resets the connection to Google. Retry a
+   few times with a short back-off so a single dropped read is invisible. */
+function jsonp(params, tries){
+  tries = (tries===undefined) ? 3 : tries;
+  return jsonpOnce(params).catch(function(err){
+    if(tries > 1) return new Promise(function(r){ setTimeout(r, 1200); }).then(function(){ return jsonp(params, tries-1); });
+    throw err;
   });
 }
 
@@ -1081,7 +1021,6 @@ function post(payload, tries){
     .then(function(res){
       if(!res || res.ok === undefined) throw new Error('Unexpected reply from the server. Try again in a moment.');
       if(!res.ok){
-        if(/session has ended/i.test(res.error)) signOut(true);
         throw new Error(res.error);
       }
       return res.data;
@@ -1103,6 +1042,7 @@ function sync(quiet){
   }
   if(!quiet) setStatus('', 'Reading the sheet…');
   return jsonp({ action:'bootstrap' }).then(function(data){
+    SYNC_FAILS = 0;
     if(data.items && data.items.length) DB.items = data.items;
     DB.stockIn  = data.stockIn  || [];
     DB.stockOut = data.stockOut || [];
@@ -1115,10 +1055,16 @@ function sync(quiet){
     $('#asof').textContent = 'Sheet read at ' + (data.refreshed||'');
     renderAll();
   }).catch(function(err){
-    LIVE = false;
-    setStatus('err','Sync failed');
-    if(!quiet) toast('bad', err.message);
-    renderAll();
+    SYNC_FAILS++;
+    /* keep showing the last good data; only flag after 3 misses in a row */
+    if(SYNC_FAILS >= 3 || !quiet){
+      LIVE = false;
+      setStatus('err', SYNC_FAILS >= 3 ? 'Network dropped — retrying' : 'Sync failed');
+      if(!quiet && SYNC_FAILS < 3) toast('bad', 'The office network dropped that request. It will retry on its own.');
+    } else {
+      setStatus('off','Reconnecting…');
+    }
+    if(DB.items.length) renderAll();
   });
 }
 
@@ -1919,140 +1865,10 @@ $('#btnsync').addEventListener('click', function(){ if(SESSION) sync(false); });
 
 
 /* ══════════════════════════════════════════════════════════════════════
-   SIGN IN
+   OPEN ACCESS — login removed
    ══════════════════════════════════════════════════════════════════════ */
-function showGate(msg){
-  $('#gate').classList.remove('hide');
-  $('#pwgate').classList.add('hide');
-  $('#gateMsg').innerHTML = msg ? '<div class="note bad">'+esc(msg)+'</div>' : '';
-  $('#liPass').value = '';
-  setTimeout(function(){ try{ $('#liUser').focus(); }catch(e){} }, 60);
-}
-function hideGate(){ $('#gate').classList.add('hide'); }
-
-function applyRole(){
-  var admin = SESSION && SESSION.user.role === 'admin';
-  $('#navadmin').classList.toggle('hide', !admin);
-  $('#userchip').classList.remove('hide');
-  $('#uname').textContent = SESSION.user.name || SESSION.user.username;
-  $('#urole').textContent = SESSION.user.role;
-  if(!admin && TAB === 'admin') go('overview');
-}
-
-$('#gateform').addEventListener('submit', function(e){
-  e.preventDefault();
-  var u = $('#liUser').value.trim(), p = $('#liPass').value;
-  if(!u || !p){ $('#gateMsg').innerHTML = '<div class="note bad">Enter both a username and a password.</div>'; return; }
-  $('#btnLogin').disabled = true;
-  $('#gateMsg').innerHTML = '<div class="note info">Checking…</div>';
-  post({ action:'login', username:u, password:p }).then(function(d){
-    SESSION = { token:d.session, user:d.user };
-    $('#gateMsg').innerHTML = '';
-    applyRole();
-    hideGate();
-    if(d.user.mustReset) openPw(true);
-    return sync(false);
-  }).catch(function(err){
-    $('#gateMsg').innerHTML = '<div class="note bad">'+esc(err.message)+'</div>';
-  }).then(function(){ $('#btnLogin').disabled = false; });
-});
-
-function signOut(expired){
-  var t = SESSION && SESSION.token;
-  SESSION = null; USERS = [];
-  DB.stockIn = []; DB.stockOut = [];
-  $('#userchip').classList.add('hide');
-  $('#navadmin').classList.add('hide');
-  go('overview');
-  showGate(expired ? 'Your session ended. Sign in again.' : '');
-  if(t) post({ action:'logout', session:t }).catch(function(){});
-}
-$('#btnout').addEventListener('click', function(){ signOut(false); });
-
-/* password change, also used for the forced first-time set */
-var PW_FORCED = false;
-function openPw(forced){
-  PW_FORCED = !!forced;
-  $('#pwgate').classList.remove('hide');
-  $('#pwMsg').innerHTML = '';
-  $('#pwOld').value = ''; $('#pwNew').value = ''; $('#pwNew2').value = '';
-  $('#btnPwCancel').classList.toggle('hide', PW_FORCED);
-  $('#pwTitle').textContent = PW_FORCED ? 'Set your password' : 'Change your password';
-  $('#pwSub').textContent = PW_FORCED
-    ? 'This account is using a password someone else set. Choose your own before carrying on.'
-    : 'Choose something only you know — 8 characters or more.';
-  setTimeout(function(){ try{ $('#pwOld').focus(); }catch(e){} }, 60);
-}
-$('#btnpw').addEventListener('click', function(){
-  if(!SESSION) return;
-  openPw(false);
-});
-$('#btnPwCancel').addEventListener('click', function(){ $('#pwgate').classList.add('hide'); });
-$('#pwform').addEventListener('submit', function(e){
-  e.preventDefault();
-  var a = $('#pwNew').value, b = $('#pwNew2').value;
-  if(a.length < 8){ $('#pwMsg').innerHTML = '<div class="note bad">Use at least 8 characters.</div>'; return; }
-  if(a !== b){ $('#pwMsg').innerHTML = '<div class="note bad">The two new passwords do not match.</div>'; return; }
-  $('#btnPwSave').disabled = true;
-  post({ action:'changePassword', oldPassword:$('#pwOld').value, newPassword:a }).then(function(){
-    $('#pwgate').classList.add('hide');
-    toast('good','Password changed.');
-  }).catch(function(err){
-    $('#pwMsg').innerHTML = '<div class="note bad">'+esc(err.message)+'</div>';
-  }).then(function(){ $('#btnPwSave').disabled = false; });
-});
-
-/* ══════════════════════════════════════════════════════════════════════
-   ADMIN — accounts
-   ══════════════════════════════════════════════════════════════════════ */
-function loadUsers(){
-  if(!SESSION || SESSION.user.role !== 'admin') return;
-  post({ action:'listUsers' }).then(function(list){
-    USERS = list; renderUsers();
-  }).catch(function(e){ toast('bad', e.message); });
-}
-function renderUsers(){
-  $('#tblUsers').innerHTML =
-    '<thead><tr><th>User</th><th>Role</th><th>Last signed in</th><th>Status</th><th></th></tr></thead><tbody>'+
-    (USERS.length ? USERS.map(function(u){
-      var me = SESSION && u.username === SESSION.user.username;
-      return '<tr><td><strong>'+esc(u.name||u.username)+'</strong>'+(me?' <span class="tag in">you</span>':'')+
-        '<div class="small muted code">'+esc(u.username)+'</div></td>'+
-        '<td><span class="tag '+(u.role==='admin'?'out':'nil')+'">'+esc(u.role)+'</span></td>'+
-        '<td class="small muted">'+esc(u.lastLogin||'never')+
-          (u.mustReset?'<div class="small" style="color:var(--gold)">must set password</div>':'')+'</td>'+
-        '<td>'+(u.status==='ACTIVE'?'<span class="tag in">Active</span>':'<span class="tag nil">Disabled</span>')+'</td>'+
-        '<td style="text-align:right; white-space:nowrap">'+
-          '<button class="linkbtn" onclick="adminReset(\''+esc(u.username)+'\')">Reset password</button>'+
-          (me ? '' : '<button class="linkbtn" onclick="adminStatus(\''+esc(u.username)+'\',\''+
-            (u.status==='ACTIVE'?'DISABLED':'ACTIVE')+'\')">'+(u.status==='ACTIVE'?'Disable':'Enable')+'</button>')+
-        '</td></tr>';
-    }).join('') : '<tr><td colspan="5" class="muted">No accounts yet.</td></tr>')+'</tbody>';
-}
-function adminReset(username){
-  var p = window.prompt('New password for '+username+'.\nThey will be asked to change it at their next sign-in.\n\nAt least 8 characters:');
-  if(p===null) return;
-  post({ action:'resetPassword', username:username, newPassword:p })
-    .then(function(){ toast('good','Password reset for '+username+'. Tell them what it is — it cannot be read back.'); loadUsers(); })
-    .catch(function(e){ toast('bad', e.message); });
-}
-function adminStatus(username, status){
-  var verb = status==='ACTIVE' ? 'Enable' : 'Disable';
-  if(!window.confirm(verb+' '+username+'?\n\nThe account stays on record either way.')) return;
-  post({ action:'setUserStatus', username:username, status:status })
-    .then(function(){ toast('good', username+' is now '+status.toLowerCase()+'.'); loadUsers(); })
-    .catch(function(e){ toast('bad', e.message); });
-}
-$('#btnUsersRefresh').addEventListener('click', loadUsers);
-$('#btnAddUser').addEventListener('click', function(){
-  post({ action:'addUser', username:$('#nuUser').value.trim(), fullName:$('#nuName').value.trim(),
-         role:$('#nuRole').value, password:$('#nuPass').value })
-    .then(function(r){
-      toast('good','Account created for '+r.username+'. Give them the password you just set.');
-      $('#nuUser').value=''; $('#nuName').value=''; $('#nuPass').value='';
-      loadUsers();
-    }).catch(function(e){ toast('bad', e.message); });
-});
+var SESSION = { user:{ role:'admin', name:'Facility Store' } };  // everyone is admin now
+function loadUsers(){}   // user management removed with login
 
 /* ══════════════════════════════════════════════════════════════════════
    ADMIN — opening stock
@@ -2216,19 +2032,25 @@ if(pd) pd.textContent = 'Printed ' + new Date().toLocaleDateString('en-GB',
   {day:'2-digit', month:'short', year:'numeric'});
 
 renderAll();          // paint the shell from the seed
-showGate('');         // nothing loads until someone signs in
+sync(false);          // load straight away — no sign-in
 
-/* Wake the backend in the background while the user is typing, so the
-   first real sign-in doesn't pay the cold-start cost. */
-if(SCRIPT_URL){
-  var img = new Image();
-  fetch(SCRIPT_URL + '?action=warmup&token=' + encodeURIComponent(API_TOKEN) + '&_=' + Date.now(),
-    { method:'GET', mode:'no-cors' }).catch(function(){});
+/* Keep the backend warm while the sign-in page is open, so login doesn't
+   pay the cold-start minute. Repeats until someone signs in. */
+function prewarm(){
+  if(SESSION || !SCRIPT_URL) return;
+  var s = document.createElement('script');
+  var cb = 'w_' + Math.random().toString(36).slice(2);
+  window[cb] = function(){ try{ delete window[cb]; }catch(e){} if(s.parentNode) s.parentNode.removeChild(s); };
+  s.src = SCRIPT_URL + '?action=warmup&callback=' + cb + '&token=' + encodeURIComponent(API_TOKEN) + '&_=' + Date.now();
+  s.onerror = function(){ if(s.parentNode) s.parentNode.removeChild(s); };
+  document.body.appendChild(s);
 }
+prewarm();
+setInterval(prewarm, 20000);
 
 /* Re-read every minute, but never while a form has unposted lines. */
 setInterval(function(){
-  if(!SESSION || !SCRIPT_URL) return;
+  if(!SCRIPT_URL) return;
   if(CART_IN.length || CART_OUT.length) return;
   if(TAB==='receive' || TAB==='issue') return;
   sync(true);
